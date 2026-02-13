@@ -214,3 +214,18 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# === Project-specific ===
+
+# Data (large CSVs, keep in data/ but don't track)
+data/*.csv
+
+# Model artifacts
+catboost_info/
+*.cbm
+
+# Root submission shortcut (versioned ones live in submissions/)
+submission.csv
+
+# Windows artifact
+nul
