@@ -211,3 +211,88 @@ def build_features(df: pd.DataFrame, feature_sets: list[str] = None) -> pd.DataF
         feat_df = add_tabular_features(feat_df, df)
 
     return feat_df.replace([np.inf, -np.inf], np.nan).fillna(0)
+
+
+# ── Sequence features for 1D-CNN ───────────────────────────────────
+
+def extract_sequence(hex_str: str, traj_time_str: str, n_steps: int = 64) -> np.ndarray:
+    """
+    Convert a variable-length radar trajectory to a fixed-length (6, n_steps) array.
+
+    Channels: [alt_norm, rcs_norm, speed, bearing_change, lat_delta, lon_delta]
+    - alt and rcs are z-score normalized per-track (removes absolute bias, keeps shape)
+    - Short tracks: linearly interpolated to n_steps
+    - Long tracks: uniformly subsampled to n_steps
+
+    Returns np.ndarray of shape (6, n_steps), float32.
+    """
+    from scipy.interpolate import interp1d
+
+    pts = parse_ewkb_4d(hex_str)
+    times = parse_trajectory_time(traj_time_str)
+    n = len(pts)
+
+    lons = np.array([p[0] for p in pts], dtype=np.float64)
+    lats = np.array([p[1] for p in pts], dtype=np.float64)
+    alts = np.array([p[2] for p in pts], dtype=np.float64)
+    rcs  = np.array([p[3] for p in pts], dtype=np.float64)
+
+    # Compute per-step derived quantities (length n-1, then pad to n)
+    if n > 1:
+        dt = np.maximum(np.diff(times), 0.001)
+        dists = np.array([haversine(lons[i], lats[i], lons[i+1], lats[i+1]) for i in range(n-1)])
+        speeds = dists / dt
+        if n > 2:
+            bearings = np.arctan2(np.diff(lats), np.diff(lons))
+            bchanges = np.arctan2(np.sin(np.diff(bearings)), np.cos(np.diff(bearings)))
+            bchanges = np.concatenate([[0.0], bchanges])  # length n-1
+        else:
+            bchanges = np.zeros(n - 1)
+        lat_deltas = np.diff(lats)
+        lon_deltas = np.diff(lons)
+        # Pad derived arrays to length n (repeat last value)
+        speeds     = np.concatenate([speeds,     [speeds[-1]]])
+        bchanges   = np.concatenate([bchanges,   [bchanges[-1]]])
+        lat_deltas = np.concatenate([lat_deltas, [lat_deltas[-1]]])
+        lon_deltas = np.concatenate([lon_deltas, [lon_deltas[-1]]])
+    else:
+        speeds     = np.zeros(n)
+        bchanges   = np.zeros(n)
+        lat_deltas = np.zeros(n)
+        lon_deltas = np.zeros(n)
+
+    # Z-score normalise alt and rcs per-track
+    def znorm(arr):
+        s = arr.std()
+        return (arr - arr.mean()) / s if s > 1e-8 else arr - arr.mean()
+
+    channels = np.stack([znorm(alts), znorm(rcs), speeds, bchanges, lat_deltas, lon_deltas])
+    # channels shape: (6, n)
+
+    # Resample to n_steps along the time axis
+    if n == 1:
+        out = np.repeat(channels, n_steps, axis=1)
+    elif n >= n_steps:
+        idx = np.round(np.linspace(0, n - 1, n_steps)).astype(int)
+        out = channels[:, idx]
+    else:
+        t_orig = np.linspace(0, 1, n)
+        t_new  = np.linspace(0, 1, n_steps)
+        out = np.stack([
+            interp1d(t_orig, channels[c], kind='linear')(t_new)
+            for c in range(channels.shape[0])
+        ])
+
+    return np.nan_to_num(out, nan=0.0, posinf=0.0, neginf=0.0).astype(np.float32)
+
+
+def build_sequences(df: pd.DataFrame, n_steps: int = 64) -> np.ndarray:
+    """
+    Extract fixed-length sequences for all rows in df.
+
+    Returns np.ndarray of shape (len(df), 6, n_steps), float32.
+    """
+    seqs = []
+    for _, row in df.iterrows():
+        seqs.append(extract_sequence(row.trajectory, row.trajectory_time, n_steps))
+    return np.stack(seqs)
