@@ -3,7 +3,7 @@ import pandas as pd
 import numpy as np
 from pathlib import Path
 from datetime import datetime
-from .data import CLASSES, ROOT, load_test
+from .data import CLASSES, ROOT, load_test, load_sample_submission
 
 
 def save_submission(
@@ -15,7 +15,7 @@ def save_submission(
     Save a submission CSV to submissions/ with metadata in filename.
 
     Args:
-        test_preds: array of shape (n_test, 9)
+        test_preds: array of shape (n_test, 9) with columns in CLASSES order (alphabetical)
         name: experiment name (e.g. "v2_ensemble")
         cv_map: optional CV mAP score to include in filename
 
@@ -23,9 +23,14 @@ def save_submission(
         Path to saved submission file.
     """
     test = load_test()
+    sample_sub = load_sample_submission()
+    # Use sample submission column order (NOT alphabetical CLASSES order)
+    sub_columns = [c for c in sample_sub.columns if c != "track_id"]
+
     sub = pd.DataFrame({"track_id": test["track_id"]})
-    for i, cls in enumerate(CLASSES):
-        sub[cls] = test_preds[:, i]
+    for col in sub_columns:
+        cls_idx = CLASSES.index(col)
+        sub[col] = test_preds[:, cls_idx]
 
     submissions_dir = ROOT / "submissions"
     submissions_dir.mkdir(exist_ok=True)

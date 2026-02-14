@@ -8,8 +8,8 @@ ROOT = Path(__file__).resolve().parent.parent
 DATA_DIR = ROOT / "data"
 
 CLASSES = [
-    "Clutter", "Cormorants", "Pigeons", "Ducks", "Geese",
-    "Gulls", "Birds of Prey", "Waders", "Songbirds",
+    "Birds of Prey", "Clutter", "Cormorants", "Ducks", "Geese",
+    "Gulls", "Pigeons", "Songbirds", "Waders",
 ]
 
 

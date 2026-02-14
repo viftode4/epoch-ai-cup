@@ -89,12 +89,15 @@ epoch-ai-cup/
 
 ## Current Status
 
-**Best: E02 — v2_ensemble — CV mAP 0.7214**
+**Best: E11 — stacking_4model — CV mAP 0.7396**
 
-See `EXPERIMENTS.md` for full history. See `RESEARCH.md` for paper references and next steps.
+Heterogeneous stacking: 70% tree ensemble + 10% MiniRocket + 10% CNN + 10% SVM.
+GPU enabled for all tree models (LGB device=gpu, XGB device=cuda, CB task_type=GPU).
 
-### Next experiments to try (from research):
-1. CWT wavelet features on RCS (wingbeat extraction) — Zaugg et al. 2008
-2. Flight mode segmentation (flap/glide/pause) — targets Pigeon vs Songbird
-3. 1D-CNN on raw trajectory time series — different model paradigm
-4. Trajectory shape: fractal dimension, curvature, direction autocorrelation
+See `EXPERIMENTS.md` for full history. See `RESEARCH.md` for paper references.
+
+### Next experiments to try:
+1. Augment CNN (window warping, slicing, jitter, mixup) to improve from 0.52 standalone
+2. Improve MiniRocket (try Ridge classifier, more channels, longer sequences)
+3. Per-class calibration / post-processing on stacked predictions
+4. Pseudo-labeling: use E11 predictions on test as extra training data
