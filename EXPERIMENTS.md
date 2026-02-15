@@ -32,6 +32,11 @@ Track every experiment run. Add a row when you run something, even if it fails.
 | E23 | 2026-02-14 | perclass_weights | 0.7557 | 0.614 | 0.942 | 0.379 | 0.742 | 0.784 | 0.960 | 0.889 | 0.843 | 0.652 | Per-class stacking weights on existing OOF. +0.002 vs E15. StratifiedKFold (inflated). |
 | E24 | 2026-02-14 | weakclass_features | 0.6737 | -- | -- | -- | -- | -- | -- | -- | -- | -- | 22 weakclass feats. GroupKFold. Cormorants +0.013 but net -0.010 (dilution). |
 | E25 | 2026-02-14 | no_temporal_overfit | **0.7050** | 0.591 | 0.924 | 0.324 | 0.612 | 0.712 | 0.948 | 0.847 | 0.811 | 0.576 | **CRITICAL: removed 18 temporal overfit features + weakclass. LB was 0.52 because train months [1,4,9,10] != test [2,5,9,10,12]. Config D best.** |
+| E27 | 2026-02-15 | lomo_baseline | 0.6965/0.3557 | 0.587/0.323 | 0.924/0.544 | 0.304/0.061 | 0.599/0.319 | 0.709/0.355 | 0.948/0.857 | 0.843/0.172 | 0.795/0.525 | 0.561/0.045 | SKF=0.6965 vs LOMO=0.3557. Massive 0.34 gap. LOMO predicts 0 Cormorants/Pigeons/Waders. |
+| E28 | 2026-02-15 | adversarial_weights | 0.6738 | 0.584 | 0.914 | 0.250 | 0.579 | 0.688 | 0.939 | 0.826 | 0.782 | 0.503 | Adversarial weighting hurts: SKF-adv=0.6738 vs 0.6965 base. LOMO-adv=0.3497 vs 0.3560 base. Shift is biological. |
+| E29 | 2026-02-15 | ovr_binary | 0.6499 | 0.581 | 0.908 | 0.143 | 0.570 | 0.603 | 0.950 | 0.850 | 0.780 | 0.465 | OvR binary (LGB+CB per-class). Worse than multiclass alone but adds diversity for blending. |
+| E30 | 2026-02-15 | ovr_adversarial | 0.6248 | 0.536 | 0.896 | 0.099 | 0.522 | 0.591 | 0.944 | 0.811 | 0.768 | 0.455 | OvR + adversarial weights. Worse than E29 (no adv). Adversarial weighting consistently harmful. |
+| E31 | 2026-02-15 | blend_ovr_multiclass | **0.7115** | 0.600 | 0.926 | 0.324 | 0.626 | 0.713 | 0.952 | 0.855 | 0.814 | 0.594 | Per-class blend of E25D+E29 OvR. **New best SKF CV.** OvR diversity helps Ducks+Pigeons+Gulls. |
 
 ## CRITICAL: Temporal Overfitting Discovery (2026-02-14)
 
@@ -102,3 +107,8 @@ Systematic test of every feature group and model type in isolation.
 - **SMOTE hurts tree models**: All targets (100-300) worse than baseline. Synthetic features confuse gradient boosting.
 - **Hierarchical classification doesn't help**: Binary Gull/NonGull (87.7% acc) too noisy, errors propagate. Optimal blend = 0% hierarchical.
 - **Weakclass features help Cormorants but dilute overall**: +0.013 Cormorants, -0.010 overall. BUT when combined with temporal removal (E25D), net positive: 0.7050 vs 0.6970 without them.
+- **LOMO CV is far too harsh**: LOMO=0.3557 vs SKF=0.6965 (delta=0.34!). Model can barely generalize across months. LOMO predicts 0 Cormorants/Pigeons/Waders on test.
+- **Adversarial sample weighting HURTS**: Both on multiclass (-0.006 LOMO, -0.023 SKF) and OvR (-0.025 SKF). The train/test shift is biological (seasonal bird behavior), not fixable by reweighting samples.
+- **OvR binary classifiers worse standalone** (0.6499 vs 0.6965) but add diversity for blending: per-class blend of E25D+E29 OvR = 0.7115 (+0.0067 vs E25D alone).
+- **Per-class blending > greedy blending**: Per-class optimal (0.7115) > greedy forward (0.7058) > single model (0.7048). OvR helps Ducks (+0.019), Pigeons (+0.011), Gulls (+0.002).
+- **5 additional temporal leaks found** in add_weakclass_tabular(): is_oct_nov, migration_alt, migration_speed, is_night, night_high_alt. Now included in ALL_TEMPORAL filter.
