@@ -8,6 +8,19 @@ import pandas as pd
 from scipy.interpolate import interp1d
 from .data import parse_ewkb_4d, parse_trajectory_time
 
+# Canonical list of ALL temporal features that cause train/test leakage.
+# Train months [1,4,9,10] vs test months [2,5,9,10,12] -- 33% unseen.
+# Import this instead of copy-pasting across experiments.
+ALL_TEMPORAL = [
+    # 18 original temporal features
+    "hour", "month", "dayofweek", "time_of_day",
+    "hour_sin", "hour_cos", "month_sin", "month_cos", "timestamp_duration",
+    "is_afternoon", "is_october", "oct_afternoon", "month_x_hour",
+    "is_april", "is_early_morning", "is_migration", "is_spring", "hour_bin_3h",
+    # 5 weakclass temporal leaks
+    "is_oct_nov", "migration_alt", "migration_speed", "is_night", "night_high_alt",
+]
+
 
 def haversine(lon1, lat1, lon2, lat2):
     """Haversine distance in meters."""
