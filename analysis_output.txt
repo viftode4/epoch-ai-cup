@@ -1,0 +1,223 @@
+======================================================================
+DEEP DIVE ANALYSIS: Month Distributions, Feature Shift, LOMO Breakdown
+======================================================================
+
+Train: 2601 samples, months [np.int32(1), np.int32(4), np.int32(9), np.int32(10)]
+Test:  1872 samples, months [np.int32(2), np.int32(5), np.int32(9), np.int32(10), np.int32(12)]
+
+======================================================================
+PART 1: MONTH DISTRIBUTION ANALYSIS
+======================================================================
+
+--- 1a: Class distribution per training month ---
+
+Month 1 (Jan): 221 samples
+            Class  Count     Pct
+  ---------------  -----  ------
+    Birds of Prey      2    0.9% *** RARE ***
+          Clutter      1    0.5% *** RARE ***
+       Cormorants      6    2.7%
+            Ducks      1    0.5% *** RARE ***
+            Geese     10    4.5%
+            Gulls    168   76.0%
+          Pigeons      3    1.4% *** RARE ***
+        Songbirds     19    8.6%
+           Waders     11    5.0%
+  Class entropy: 0.957 (max = 2.197)
+
+Month 4 (Apr): 473 samples
+            Class  Count     Pct
+  ---------------  -----  ------
+    Birds of Prey     49   10.4%
+          Clutter     70   14.8%
+       Cormorants      1    0.2% *** RARE ***
+            Ducks     18    3.8%
+            Geese     10    2.1%
+            Gulls    215   45.5%
+          Pigeons      5    1.1%
+        Songbirds     55   11.6%
+           Waders     50   10.6%
+  Class entropy: 1.631 (max = 2.197)
+
+Month 9 (Sep): 467 samples
+            Class  Count     Pct
+  ---------------  -----  ------
+    Birds of Prey     30    6.4%
+          Clutter      3    0.6% *** RARE ***
+       Cormorants      9    1.9%
+            Ducks      0    0.0% *** RARE ***
+            Geese      0    0.0% *** RARE ***
+            Gulls    321   68.7%
+          Pigeons      5    1.1%
+        Songbirds     72   15.4%
+           Waders     27    5.8%
+  Class entropy: 1.044 (max = 2.197)
+
+Month 10 (Oct): 1440 samples
+            Class  Count     Pct
+  ---------------  -----  ------
+    Birds of Prey     27    1.9%
+          Clutter     10    0.7%
+       Cormorants     24    1.7%
+            Ducks     39    2.7%
+            Geese     63    4.4%
+            Gulls    799   55.5%
+          Pigeons    109    7.6%
+        Songbirds    337   23.4%
+           Waders     32    2.2%
+  Class entropy: 1.359 (max = 2.197)
+
+
+--- 1b: Jensen-Shannon divergence between training months ---
+
+          M01  M04  M09  M10
+          ----  ----  ----  ----
+  M01    ----  0.328  0.188  0.216
+  M04    0.328  ----  0.289  0.320
+  M09    0.188  0.289  ----  0.238
+  M10    0.216  0.320  0.238  ----
+
+--- 1c: Classes with <5 samples per month ---
+
+  Month  1 (Jan): Birds of Prey(2), Clutter(1), Ducks(1), Pigeons(3)
+  Month  4 (Apr): Cormorants(1)
+  Month  9 (Sep): Clutter(3), Ducks(0), Geese(0)
+  Month 10 (Oct): all classes have >=5 samples
+
+======================================================================
+PART 2: FEATURE DISTRIBUTION SHIFT PER MONTH
+======================================================================
+
+Building features (E38 config)...   Features: 0/2601
+  Features: 500/2601
+  Features: 1000/2601
+  Features: 1500/2601
+  Features: 2000/2601
+  Features: 2500/2601
+  Features: 2601/2601 done
+  Features: 0/1872
+  Features: 500/1872
+  Features: 1000/1872
+  Features: 1500/1872
+  Features: 1872/1872 done
+done. 139 features.
+
+--- 2a: Top 20 features by variance, mean/std per month ---
+
+                         Feature  M01_mean   M01_std  M04_mean   M04_std  M09_mean   M09_std  M10_mean   M10_std
+  ------------------------------  ---------  --------  ---------  --------  ---------  --------  ---------  --------
+                       accel_max  345041.81  2304812.50  242456.16  1570958.25      15.99      6.64      12.79      6.08
+                       accel_std   33355.02  209440.14   41215.47  332484.97       5.42      2.60       4.34      2.13
+                      accel_mean   -3593.73  21738.13   -8476.23  80850.41       0.15      0.57       0.06      0.43
+                     speed_x_alt    1217.08   3293.00     964.64   3882.07     449.36    381.09     747.54    857.85
+                       rcs_x_alt   -1234.66    930.19    -996.01   1049.74    -941.12    735.11   -1455.68   1405.07
+                       speed_max     611.42   2529.11     517.79   1966.52      26.94      7.50      24.23      6.39
+                 speed_decel_max     560.85   2502.17     484.51   1943.47      14.42      6.62      11.60      5.93
+                    alt_rate_max     291.98   1861.35     253.76   1297.97      15.55      8.14      14.38      7.51
+                      total_dist    1163.77    838.54     771.08    687.76     813.99    603.40     736.05    594.77
+                   straight_dist     938.17    700.22     569.36    590.68     648.46    542.37     617.49    519.17
+                 rcs_total_power     709.73    347.23     691.24    471.72     466.37    368.20     528.45    403.48
+                   curvature_max     538.40    299.60     447.26    277.07     505.44    315.61     415.56    264.86
+                  rcs_peak_power     192.61    141.83     208.17    197.58     136.10    164.11     160.03    166.84
+                       speed_std      64.60    241.63      77.80    360.09       4.62      2.00       3.99      1.68
+                   alt_accel_std      39.05    178.61      58.43    329.89       6.20      2.65       5.52      2.61
+                    alt_rate_std      27.83    126.47      41.19    224.23       4.39      1.86       4.09      1.83
+            size_alt_interaction      30.13     67.65      31.93     90.99      24.60     62.29      53.82    109.30
+                      size_x_alt      30.13     67.65      31.93     90.99      24.60     62.29      53.82    109.30
+                    wx_radiation      12.57      8.05     108.77     49.33     240.85     10.98      55.76     36.13
+                  curvature_mean      78.80     46.54      79.78     54.50      97.55     67.01      83.04     53.98
+
+--- 2b: Features with largest shift for September vs other months ---
+        (measured by absolute difference in standardized mean)
+
+  Rank                              Feature   Sep_mean  Rest_mean   Z-shift
+  ----  -----------------------------------  ---------  ---------  --------
+     1                        gbif_si_gulls      0.882      0.455    13.366
+     2                         wx_radiation    240.854     63.037     3.800
+     3                      wx_sunshine_hrs      1.000      0.184     2.931
+     4                        wx_dewpoint_c     18.198      9.584     2.904
+     5                            wx_temp_c     21.544     12.890     2.454
+     6                            wx_wind_v     -3.108      2.492     2.252
+     7                            wx_wind_u     -5.386      1.156     2.024
+     8                   gbif_si_cormorants      1.052      0.909     1.548
+     9                  sol_solar_elevation     41.529     23.968     1.471
+    10                        gbif_si_geese      0.478      1.081     1.260
+    11                   sol_daylight_hours     13.413     11.079     1.252
+    12                      gbif_si_pigeons      0.759      1.022     0.978
+    13                             lon_mean      6.797      6.801     0.908
+    14              sol_hours_since_sunrise      6.936      5.218     0.841
+    15                        wx_wind_speed      6.218      4.052     0.778
+    16                        solitary_slow      0.415      0.189     0.579
+    17                        gbif_si_ducks      0.718      0.848     0.557
+    18                             airspeed     13.751     15.697     0.548
+    19                              rcs_max    -17.650    -13.902     0.508
+    20                            rcs_range     19.747     23.223     0.502
+    21                              rcs_std      4.711      5.361     0.470
+    22                   airspeed_vs_ground      1.056      1.243     0.454
+    23                        airspeed_high      0.111      0.314     0.437
+    24                gbif_si_birds_of_prey      1.136      1.015     0.407
+    25                    alt_change_halves      4.687     -3.351     0.407
+    26                        rcs_stability      0.853      0.825     0.392
+    27                              rcs_q75    -25.480    -23.327     0.382
+    28                             rcs_mean    -28.534    -26.636     0.371
+    29                           alt_median     33.187     52.274     0.359
+    30                              alt_q75     39.987     59.686     0.357
+
+--- 2c: Features with largest shift for October vs other months ---
+
+  Rank                              Feature   Oct_mean  Rest_mean   Z-shift
+  ----  -----------------------------------  ---------  ---------  --------
+     1                        wx_precip_dur      0.025      0.000  247916368.000
+     2                         wx_precip_mm      0.008      0.000  82638952.000
+     3                   gbif_si_cormorants      0.844      1.046    27.664
+     4                gbif_si_birds_of_prey      0.809      1.319     3.361
+     5                   sol_daylight_hours     10.374     12.892     1.198
+     6                  sol_solar_elevation     20.347     35.521     1.162
+     7                 month_gbif_diversity      0.812      1.163     1.107
+     8                        gbif_si_gulls      0.440      0.646     1.054
+     9                        gbif_si_ducks      0.706      0.973     1.031
+    10                         wx_radiation     55.761    143.587     0.946
+    11              sol_hours_since_sunrise      4.981      6.202     0.872
+    12                    gbif_si_songbirds      1.626      1.230     0.814
+    13                        gbif_si_geese      0.757      1.241     0.756
+    14                      gbif_si_pigeons      0.861      1.117     0.742
+    15                       gbif_si_waders      0.833      1.031     0.727
+    16                            wx_wind_u      1.166     -1.488     0.711
+    17                        wx_dewpoint_c      9.874     12.689     0.556
+    18                      wx_sunshine_hrs      0.228      0.458     0.506
+    19                            wx_temp_c     13.193     15.996     0.497
+    20                            rcs_x_alt  -1455.677  -1019.357     0.475
+
+--- 2d: Features where Sep and Oct shift in OPPOSITE directions ---
+        (relative to global mean, sign of deviation differs)
+
+                              Feature   Sep_dev   Oct_dev   Magnitude
+  -----------------------------------  --------  --------  ----------
+                        gbif_si_gulls     0.350    -0.092       2.659
+                         wx_radiation   145.891   -39.202       2.300
+                   gbif_si_cormorants     0.118    -0.090       2.069
+                        wx_dewpoint_c     7.067    -1.257       1.952
+                      wx_sunshine_hrs     0.669    -0.103       1.921
+                            wx_temp_c     7.100    -1.251       1.812
+                            wx_wind_u    -5.367     1.185       1.694
+                  sol_solar_elevation    14.408    -6.773       1.659
+                            wx_wind_v    -4.594     0.559       1.653
+                   sol_daylight_hours     1.915    -1.124       1.590
+                gbif_si_birds_of_prey     0.099    -0.227       1.197
+              sol_hours_since_sunrise     1.410    -0.545       0.969
+                        wx_wind_speed     1.777    -0.432       0.825
+                             lon_mean    -0.004     0.001       0.789
+                 month_gbif_diversity     0.041    -0.157       0.720
+                    gbif_si_songbirds    -0.076     0.177       0.665
+                             airspeed    -1.597     0.322       0.546
+                        solitary_slow     0.186    -0.039       0.535
+                        airspeed_high    -0.166     0.064       0.514
+                       gbif_si_waders     0.012    -0.088       0.485
+
+======================================================================
+PART 3: PER-CLASS PER-MONTH LOMO BREAKDOWN (CatBoost)
+======================================================================
+
+Training CatBoost LOMO (4 folds, one per month)...
+
+Warning: less than 75% GPU memory available for training. Free: 2579 Total: 6143.5

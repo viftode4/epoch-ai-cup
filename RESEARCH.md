@@ -458,3 +458,324 @@ Radar-specific: be conservative with RCS jittering (most informative channel). A
 8. **SOAP direct AP loss** — LibAUC for CNN
 9. **CFAMG** counterfactual minority augmentation
 10. **Decoupled training** — trees without class weights + post-hoc logit shift
+
+---
+
+## Research Round 3 (2026-02-16): Flight Behavior Physics & Novel Techniques
+
+### Context
+
+Our best model (E38, LB=0.53, LOMO=0.3615) suffers from temporal distribution shift -- train months [1,4,9,10] vs test months [2,5,9,10,12]. The key insight: we should focus on **how birds fly** (physics/biomechanics) rather than **when they fly** (temporal features that leak).
+
+---
+
+### Part 1: Radar Ornithology Literature
+
+#### Wingbeat Frequency (WBF) -- The Gold Standard in Radar Bird ID
+
+**Physics:** As a bird flaps, its wings act as a "corner reflector" -- when perpendicular to radar, RCS spikes by ~10dB. This creates a periodic modulation at the wingbeat frequency.
+
+**Measured frequencies by species group:**
+
+| Group | WBF (Hz) | Source |
+|-------|----------|--------|
+| Songbirds | 8-20 | Bruderer 2010 |
+| Pigeons | 5.5-6.5 | Bruderer 2010, PLOS Bio 2019 |
+| Geese | ~5.5 | JEB 2001 |
+| Waders | 5-7 (continuous) | Multiple |
+| Gulls | 3-4 | Multiple |
+| Cormorants | 4-5 (est.) | High wing loading |
+| Birds of Prey | Irregular/minimal | Soaring dominates |
+| Ducks | 4-6 (est.) | Medium-large |
+| Clutter | N/A | No wingbeat |
+
+**Scaling law:** WBF = 2.4 * mass^(-0.38) Hz (allometric relationship)
+
+**OUR LIMITATION:** Robin Radar MAX likely samples at 1-5 Hz -- BELOW Nyquist for most wingbeat frequencies. We CANNOT directly extract wingbeat frequency. BUT:
+- RCS modulation depth (amplitude of fluctuation) still works at low sampling
+- RCS autocorrelation captures periodicity even if aliased
+- RCS variance distinguishes continuous flappers from gliders
+
+**Key paper: Zaugg et al. 2008** -- 32-band CWT (0.31-65 Hz, log-spaced) + SVM achieved AUC 0.965-0.995. We have `extract_zaugg_cwt_features()` in src/features.py but never used it in stacking with SVM. Critical insight: **SVM is much better than trees for spectral features** (trees make axis-aligned splits, can't capture spectral shape).
+
+#### RCS (Radar Cross Section) Patterns
+
+**Absolute RCS as size proxy:**
+- Clutter: -13.5 to -9.5 dBm2 (MUCH higher than birds)
+- Large birds (Geese, Cormorants): -15 to -20 dBm2
+- Medium (Gulls, Pigeons): -24 to -28 dBm2
+- Small (Songbirds): -30 to -37 dBm2
+
+**RCS temporal modulation (micro-Doppler):**
+- Wings create ~10dB fluctuation during flapping
+- Near 0dB during gliding (wings stationary)
+- Bimodal RCS distribution common (body-only peak + wing-extended peak)
+- Corner reflector effect: larger wings = larger modulation amplitude
+
+**What we already capture:** rcs_mean, rcs_std, rcs_range, rcs_iqr, rcs_skew, rcs_cv, rcs_autocorr_lag1/3, rcs_stability, rcs_zero_cross_rate, rcs_n_peaks_per_sec
+
+**What we're MISSING (high-value gaps):**
+- **RCS modulation depth** (P90-P10, more robust than range)
+- **RCS periodicity index** (max autocorr at specific lags relevant to bird wingbeats)
+- **RCS bimodality** (wings create bimodal distribution -- Hartigan's dip test)
+- **RCS fluctuation power** (total oscillation energy in detrended signal)
+
+#### Flight Pattern Classification
+
+**Five main flight modes (from Swiss Birdradar + biomechanics lit):**
+
+1. **Continuous flapping** (Waders, Pigeons, Cormorants)
+   - Signal: steady RCS modulation, no pauses
+   - Detection: low variance in windowed RCS variance, high autocorrelation
+
+2. **Bounding flight** (Songbirds ONLY, body mass <300g)
+   - Pattern: rapid flap burst -> fold wings -> freefall -> repeat
+   - Signal: periodic high-variance and near-zero-variance RCS segments
+   - Altitude oscillates in phase with flap/fold cycle (0.5-2 Hz)
+   - KEY: during bound phase, wings FOLDED -> RCS drops. Alt and RCS are positively correlated.
+
+3. **Flap-gliding** (Gulls, Geese, some Ducks)
+   - Pattern: flapping bursts -> extended glides on outstretched wings
+   - Signal: long glide segments (low RCS variance)
+   - Mean glide duration >> mean flap duration
+
+4. **Soaring/thermal circling** (Birds of Prey)
+   - Minimal flapping, circle upward in thermals
+   - Near-constant low RCS, altitude gain while going slow
+   - High trajectory curvature
+   - Median thermal: ~90 seconds
+
+5. **Non-biological** (Clutter)
+   - No periodic RCS modulation at bird frequencies
+   - Erratic trajectory, very high RCS, short duration
+
+**What we already capture well:** flap_fraction, glide_fraction, n_mode_transitions, soaring_index, curvature, alt_osc_freq, alt_osc_amplitude
+
+**What we're MISSING:**
+- **Bounding flight index** (combining altitude oscillation WITH RCS phase correlation)
+- **Glide ratio** (L/D estimation from descending segments)
+- **Multi-segment analysis** (proportion of track in each flight mode)
+
+---
+
+### Part 2: Bird Flight Biomechanics
+
+#### Species-Specific Flight Characteristics (Season-Invariant)
+
+**What DOESN'T change with season (SAFE features):**
+- Wingbeat frequency (set by body mass & wing morphology)
+- Flight style (bounding, soaring, flap-glide)
+- Glide ratio / lift-to-drag ratio (aspect ratio is fixed)
+- RCS modulation pattern (wing shape & flapping kinematics)
+- Airspeed range (aerodynamic constraints)
+- Trajectory straightness (species-specific navigation)
+- Speed variability (CV of speed)
+
+**What DOES change (AVOID):**
+- Hour, month, season
+- Migration timing
+- Absolute altitude preferences (seasonal weather patterns)
+- Flock size (varies by season)
+
+#### Aerodynamic Parameters Computable from Our Data
+
+**Glide ratio estimation:**
+- During descending + low-RCS-variance segments: horizontal_dist / vertical_loss = L/D proxy
+- BoP: 10-20:1, Gulls: 15-25:1 (best gliders), Songbirds: 4-8:1, Cormorants: 6-10:1
+
+**Wing loading proxy:**
+- Wing loading = body weight / wing area, determines minimum flight speed
+- Proxy: airspeed / (radar_bird_size + 1)
+- High wing loading (Cormorants, diving Ducks): fast, continuous flapping
+- Low wing loading (BoP, Gulls): slow, can soar/glide
+
+**Flight efficiency:**
+- Straight-line distance / total energy proxy
+- High AR birds (BoP, Gulls): efficient, long straight glides
+- Low AR birds (Songbirds): inefficient, must flap hard
+
+#### Hardest Species Pairs to Distinguish
+
+| Pair | Physical Overlap | Key Differentiator |
+|------|------------------|--------------------|
+| Pigeons vs Ducks | Both fast (15-20 m/s), medium size, continuous flap | Ducks: lower altitude, water proximity |
+| Cormorants vs BoP | Both medium-large, long tracks | Cormorants: STRAIGHT + continuous flap; BoP: CIRCLING + soaring |
+| Waders vs Songbirds | Both small-medium, migratory | Waders: CONTINUOUS flap; Songbirds: BOUNDING |
+| Geese vs Waders | Both migratory, high altitude in Oct | Geese: FLOCK + slower; Waders: SOLO + faster |
+
+#### Clutter Discrimination
+- Clutter is NOT birds -- rain, insects, debris
+- Key: RCS = -13.8 dB (birds: -24 to -30 dB) -- MUCH brighter
+- No periodic wingbeat modulation
+- Short duration, erratic movement
+- Already our 2nd-best class (0.533 LOMO) -- less work needed here
+
+---
+
+### Part 3: ML Techniques for Trajectory Classification
+
+#### Path Signatures -- MOST PROMISING
+
+**What:** A mathematical framework that encodes a multi-dimensional path into a hierarchical feature vector. The signature of a path captures all "iterated integrals" up to a chosen depth.
+
+**Why it's perfect for us:**
+- **Provably invariant to time reparameterization** -- a cormorant's signature is the same whether the radar samples fast or slow, in January or October
+- Works on multi-channel data (altitude + RCS + speed + bearing simultaneously)
+- Captures nonlinear interactions between channels (e.g., altitude-RCS coupling)
+- Proven effective on small datasets
+- Paper: MultiPSCA (2025) beats elastic time series classifiers with minimal tuning
+
+**Feature counts by depth:**
+- 4 channels, depth 2: 4 + 16 = 20 features
+- 4 channels, depth 3: 4 + 16 + 64 = 84 features
+- With lead-lag augmentation (doubles channels to 8): depth 2 = 8 + 64 = 72 features
+
+**Lead-lag embedding:** Doubles channels by appending lagged version. Captures autocorrelation and momentum effects. Systematically outperforms vanilla signatures.
+
+**Libraries:** `iisignature` (Python, fast C++ backend), `esig`, or `signatory` (PyTorch)
+
+#### Cross-Channel Correlation Features
+
+**Currently missing entirely.** We compute features per-channel (altitude stats, RCS stats, speed stats) but never look at HOW channels relate to each other.
+
+**Key correlations:**
+- **Altitude-RCS:** Positive in bounding flight (wings fold = low RCS at altitude dip). Negative in soaring (higher altitude = farther from radar = lower RCS). ~0 in straight level flight.
+- **Speed-altitude:** Negative for gliders (descend to gain speed). ~0 for powered flight.
+- **Bearing-RCS:** High for circling birds (aspect angle changes rapidly).
+- **Speed change vs altitude rate:** Captures dive behavior, pull-up maneuvers.
+
+Note: We already have `rcs_alt_corr` in weakclass features (one cross-channel feature). The rest are missing.
+
+#### Test-Time Augmentation (TTA)
+
+**What:** At inference, create multiple augmented versions of each test sample, predict all of them, average the predictions.
+
+**Augmentations for trajectories:**
+- Time warping (stretch/compress time axis)
+- Gaussian noise injection on channels
+- Random crop + resample to original length
+- Channel dropout (zero out one channel)
+- Time reversal (fly path backwards)
+
+**Expected: +0.005-0.015 LOMO.** Small but free -- no retraining needed.
+
+#### SVM on Spectral Features (Zaugg Approach)
+
+**Key insight from literature:** Tree models make axis-aligned splits that are inefficient for correlated spectral bands. SVM with RBF kernel computes distance across the full spectral profile, capturing spectral shape.
+
+**Our situation:** We have `extract_zaugg_cwt_features()` producing 64 CWT band features. We tried adding these to tree models and they HURT (-0.009). But we never tried SVM specifically on them as a stacking component.
+
+**Zaugg's results:** SVM on 64 CWT features -> AUC 0.965. This was for individual wingbeat extraction though, not track-level classification.
+
+**Plan:** Use SVM as a stacking component alongside trees. Trees handle tabular features, SVM handles spectral features. Blend for diversity.
+
+---
+
+### Part 4: Feature Gap Analysis -- What We Have vs What's Missing
+
+#### Features We Have (Well Covered)
+- Core trajectory stats (53 features): alt, RCS, speed, acceleration, bearing, sinuosity, straightness
+- Flight mode segmentation: flap/glide fraction, mode transitions, soaring index
+- Altitude oscillation: alt_osc_freq, alt_osc_amplitude
+- RCS autocorrelation: lag 1, lag 3, zero-crossing rate, peaks per second
+- Weakclass composites: RCS stability, straightness, turn angles, altitude dynamics
+- External data: weather (11), solar (4), GBIF seasonal indices (10)
+
+#### Features MISSING (High-Value Gaps)
+
+1. **Cross-channel correlations** (speed-altitude, bearing-RCS, speed-RCS coupling)
+   - We only have rcs_alt_corr. Missing 5+ other important cross-channel interactions.
+
+2. **Biomechanics composites** (bounding flight index, glide ratio, thermal soaring score, wing loading proxy)
+   - Compound features that combine multiple signals to detect specific flight modes.
+
+3. **RCS modulation depth** (P90-P10, more robust than raw range)
+   - P90-P10 is less affected by outliers than min-max range.
+
+4. **RCS periodicity index** (max autocorrelation strength at relevant lags)
+   - Tests specific lags corresponding to bird-frequency wingbeats at our sampling rate.
+
+5. **Path signatures** (mathematically invariant trajectory representation)
+   - Time-reparameterization invariant, captures nonlinear channel interactions.
+
+6. **3D trajectory geometry** (vertical/horizontal velocity ratio, altitude trend, trajectory aspect ratio)
+   - How the bird uses 3D space -- separates soaring from level flight from diving.
+
+7. **Multi-scale sinuosity** (sub-track sinuosity to capture behavior changes within a track)
+   - A bird that flap-glides has different sinuosity at 10s vs 60s scales.
+
+8. **Path complexity** (permutation entropy -- chaotic for clutter, regular for birds)
+   - Information-theoretic measure of trajectory regularity.
+
+---
+
+### Part 5: Implementation Plan (E44-E47)
+
+#### E44: Physics-Based Flight Behavior Features
+**Priority: HIGHEST. Implement first.**
+
+Add ~25 new features to `src/features.py` in a new `extract_flight_physics_features()` function:
+
+**A. Cross-channel coupling (6 features):**
+- speed_alt_corr: Pearson(speed, altitude) -- negative for gliders
+- speed_rcs_corr: Pearson(speed, RCS) -- captures aspect angle effects
+- bearing_rcs_corr: Pearson(abs(bearing_change), RCS) -- circling birds
+- alt_rate_rcs_corr: Pearson(d(alt)/dt, RCS) -- bounding flight detection
+- speed_alt_rate_corr: Pearson(speed, d(alt)/dt) -- dive/climb behavior
+- rcs_speed_interaction: mean(RCS * speed) -- energy signature
+
+**B. Biomechanics composites (6 features):**
+- bounding_index: alt_osc_amplitude * alt_rcs_corr -- Songbird-specific
+- glide_ratio: horizontal_dist / vertical_loss during glide segments
+- thermal_score: curvature * alt_gain_rate / speed -- BoP-specific
+- wing_loading_proxy: airspeed^2 / rcs_mean (proportional to wing loading)
+- flap_regularity: std of flap-segment durations (low = continuous, high = irregular)
+- continuous_flap_score: flap_fraction * rcs_autocorr_lag1 -- Wader/Pigeon/Cormorant
+
+**C. Enhanced RCS modulation (4 features):**
+- rcs_modulation_depth: P90 - P10 (robust amplitude of RCS fluctuation)
+- rcs_periodicity_idx: max(autocorrelation) at lags 2-10 (wingbeat regularity)
+- rcs_bimodality: Hartigan's dip test statistic (bimodal = flapping bird)
+- rcs_fluctuation_power: variance of first-differenced RCS (total oscillation energy)
+
+**D. 3D trajectory geometry (4 features):**
+- vert_horiz_ratio: mean(|d(alt)/dt|) / mean(horizontal_speed) -- soaring vs level
+- alt_trend_strength: R^2 of linear fit to altitude -- climbing/descending/level
+- trajectory_aspect_ratio: vertical_extent / horizontal_extent
+- altitude_entropy: Shannon entropy of altitude histogram (complex altitude use)
+
+**E. Multi-scale features (4 features):**
+- sinuosity_ratio: sinuosity(first_half) / sinuosity(second_half) -- behavior change
+- rcs_var_ratio: rcs_var(first_half) / rcs_var(second_half) -- mode transitions
+- speed_trend: slope of linear fit to speed -- accelerating/decelerating
+- permutation_entropy: ordinal pattern complexity of RCS signal
+
+**Evaluate with LOMO CV on E38 pipeline (LGB+XGB+CB).**
+
+#### E45: Path Signatures
+**Priority: HIGH. Novel approach, directly addresses temporal shift.**
+
+Install `iisignature`. Extract depth-2 and depth-3 signatures from 4-channel trajectory (altitude, RCS, speed, bearing). Test with lead-lag augmentation. Evaluate as features for trees and as standalone + stacking.
+
+#### E46: Zaugg CWT + SVM Stacking
+**Priority: MEDIUM. Features already exist, just need SVM pipeline.**
+
+Use existing `extract_zaugg_cwt_features()` (64 features). Train SVM (sklearn SVC with RBF kernel) as stacking component. Blend with tree ensemble.
+
+#### E47: TTA + MultiRocket
+**Priority: MEDIUM-LOW. Quick experiments.**
+
+TTA: augment test trajectories, average predictions. MultiRocket: replace MiniRocket with `aeon.transformations.collection.convolution_based.MultiRocket`.
+
+#### Execution Order
+1. E44 -> evaluate LOMO -> if +0.01 or more, keep features
+2. E45 -> evaluate LOMO -> if signatures help, integrate into best pipeline
+3. E46 -> evaluate SVM diversity -> blend if positive
+4. E47 -> evaluate TTA/MultiRocket -> stack if positive
+5. Combine best of E44-E47 into a final "E48_combined" submission
+
+#### Verification
+- LOMO CV is primary metric for every experiment
+- Per-class AP breakdown (especially Cormorants, Pigeons, Waders -- weakest)
+- Bootstrap CI: delta > 0.032 to be meaningful
+- Submit to Kaggle LB if LOMO beats E38 (0.3615)

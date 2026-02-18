@@ -749,6 +749,406 @@ def extract_weakclass_features(hex_str: str, traj_time_str: str) -> dict:
         return defaults
 
 
+
+def extract_flight_physics_features(hex_str: str, traj_time_str: str) -> dict:
+    """Physics-based flight behavior features (E44).
+
+    Season-invariant features based on aerodynamics and biomechanics:
+    A. Cross-channel coupling (how altitude, RCS, speed, bearing relate)
+    B. Biomechanics composites (bounding index, glide ratio, thermal score)
+    C. Enhanced RCS modulation (modulation depth, periodicity, bimodality)
+    D. 3D trajectory geometry (vertical/horizontal ratio, altitude trend)
+    E. Multi-scale & complexity features (sinuosity ratio, permutation entropy)
+    """
+    from scipy.signal import detrend
+    from scipy.stats import linregress
+
+    pts = parse_ewkb_4d(hex_str)
+    times = parse_trajectory_time(traj_time_str)
+    lons = np.array([p[0] for p in pts])
+    lats = np.array([p[1] for p in pts])
+    alts = np.array([p[2] for p in pts])
+    rcs = np.array([p[3] for p in pts])
+    n = len(pts)
+
+    defaults = {
+        # A. Cross-channel coupling
+        "phys_speed_alt_corr": 0, "phys_speed_rcs_corr": 0,
+        "phys_bearing_rcs_corr": 0, "phys_alt_rate_rcs_corr": 0,
+        "phys_speed_alt_rate_corr": 0, "phys_rcs_speed_interaction": 0,
+        # B. Biomechanics composites
+        "phys_bounding_index": 0, "phys_glide_ratio": 0,
+        "phys_thermal_score": 0, "phys_wing_loading_proxy": 0,
+        "phys_flap_regularity": 0, "phys_continuous_flap_score": 0,
+        # C. Enhanced RCS modulation
+        "phys_rcs_mod_depth": 0, "phys_rcs_periodicity_idx": 0,
+        "phys_rcs_bimodality": 0, "phys_rcs_fluctuation_power": 0,
+        # D. 3D trajectory geometry
+        "phys_vert_horiz_ratio": 0, "phys_alt_trend_r2": 0,
+        "phys_traj_aspect_ratio": 0, "phys_alt_entropy": 0,
+        # E. Multi-scale & complexity
+        "phys_sinuosity_ratio": 0, "phys_rcs_var_ratio": 0,
+        "phys_speed_trend": 0, "phys_perm_entropy": 0,
+    }
+
+    if n < 8:
+        return defaults
+
+    try:
+        duration = times[-1] - times[0]
+        if duration < 0.5:
+            return defaults
+
+        dt = np.maximum(np.diff(times), 0.001)
+
+        # Compute derived arrays
+        dists = np.array([haversine(lons[i], lats[i], lons[i+1], lats[i+1])
+                          for i in range(n - 1)])
+        speeds = dists / dt
+        alt_rate = np.diff(alts) / dt  # m/s vertical
+
+        if n > 2:
+            bearings = np.arctan2(np.diff(lats), np.diff(lons))
+            bearing_changes = np.abs(np.arctan2(
+                np.sin(np.diff(bearings)), np.cos(np.diff(bearings))))
+        else:
+            bearing_changes = np.array([0.0])
+
+        # Midpoints for correlation (align arrays to same length)
+        rcs_mid = (rcs[:-1] + rcs[1:]) / 2  # length n-1
+        alt_mid = (alts[:-1] + alts[1:]) / 2  # length n-1
+
+        def safe_corr(a, b):
+            """Pearson correlation, safe for constant arrays."""
+            if len(a) < 3 or len(b) < 3:
+                return 0.0
+            if len(a) != len(b):
+                m = min(len(a), len(b))
+                a, b = a[:m], b[:m]
+            if np.std(a) < 1e-10 or np.std(b) < 1e-10:
+                return 0.0
+            c = np.corrcoef(a, b)[0, 1]
+            return c if np.isfinite(c) else 0.0
+
+        # ═══ A. Cross-channel coupling ═══
+        speed_alt_corr = safe_corr(speeds, alt_mid)
+        speed_rcs_corr = safe_corr(speeds, rcs_mid)
+
+        # bearing-RCS: use bearing_changes (len n-2) vs rcs (n-2 midpoints)
+        if len(bearing_changes) >= 3:
+            rcs_for_bearing = (rcs_mid[:-1] + rcs_mid[1:]) / 2 if len(rcs_mid) > 1 else rcs_mid[:len(bearing_changes)]
+            bearing_rcs_corr = safe_corr(bearing_changes[:len(rcs_for_bearing)],
+                                         rcs_for_bearing[:len(bearing_changes)])
+        else:
+            bearing_rcs_corr = 0.0
+
+        alt_rate_rcs_corr = safe_corr(alt_rate, rcs_mid)
+        speed_alt_rate_corr = safe_corr(speeds, alt_rate)
+        rcs_speed_interaction = float(np.mean(rcs_mid * speeds))
+
+        # ═══ B. Biomechanics composites ═══
+
+        # Bounding index: altitude oscillation * alt-RCS correlation
+        # Songbirds fold wings at altitude dips -> positive alt-RCS corr
+        alt_detrended = alts - np.linspace(alts[0], alts[-1], n)
+        alt_osc_amp = np.std(alt_detrended) * 2
+        bounding_index = alt_osc_amp * max(alt_rate_rcs_corr, 0)
+
+        # Glide ratio: horizontal distance / altitude loss during "glide" segments
+        # Glide = low RCS variance windows
+        win = max(3, n // 8)
+        rcs_local_var = np.array([np.var(rcs[max(0, i-win):i+1]) for i in range(n)])
+        glide_mask = rcs_local_var < np.median(rcs_local_var)
+        if np.any(glide_mask[:-1]):
+            glide_hdist = dists[glide_mask[:-1]].sum()
+            alt_at_glide = alts[:-1][glide_mask[:-1]]
+            alt_next_at_glide = alts[1:][glide_mask[:-1]]
+            alt_loss = np.sum(np.maximum(alt_at_glide - alt_next_at_glide, 0))
+            glide_ratio = glide_hdist / max(alt_loss, 1.0)
+            glide_ratio = min(glide_ratio, 100.0)  # cap
+        else:
+            glide_ratio = 0.0
+
+        # Thermal score: curvature * altitude gain rate / speed -> BoP
+        if n > 3 and np.mean(speeds) > 0:
+            dx = np.diff(lons)
+            dy = np.diff(lats)
+            ds = np.sqrt(dx**2 + dy**2) + 1e-10
+            if len(dx) > 1:
+                ddx = np.diff(dx)
+                ddy = np.diff(dy)
+                curvature = np.abs(dx[:-1] * ddy - dy[:-1] * ddx) / (ds[:-1]**3 + 1e-10)
+                curv_mean = np.mean(curvature)
+            else:
+                curv_mean = 0.0
+            alt_gain = np.sum(np.maximum(np.diff(alts), 0))
+            alt_gain_rate = alt_gain / max(duration, 0.01)
+            thermal_score = curv_mean * alt_gain_rate / max(np.mean(speeds), 1e-6)
+        else:
+            thermal_score = 0.0
+
+        # Wing loading proxy: speed^2 / |rcs_mean|
+        # High wing loading birds (Cormorants, Ducks) fly faster for their size
+        rcs_mean = np.mean(rcs)
+        wing_loading_proxy = np.mean(speeds)**2 / max(abs(rcs_mean), 1.0)
+
+        # Flap regularity: std of flap-segment durations
+        flap_mask = ~glide_mask
+        seg_durs = []
+        seg_start = 0
+        for i in range(1, n):
+            if flap_mask[i] != flap_mask[seg_start]:
+                if flap_mask[seg_start]:
+                    seg_durs.append(times[i] - times[seg_start])
+                seg_start = i
+        if flap_mask[seg_start] and seg_start < n - 1:
+            seg_durs.append(times[-1] - times[seg_start])
+        flap_regularity = np.std(seg_durs) if len(seg_durs) > 1 else 0.0
+
+        # Continuous flap score: flap_fraction * rcs_autocorrelation_lag1
+        flap_fraction = flap_mask.mean()
+        rcs_centered = rcs - rcs_mean
+        rcs_var = np.var(rcs) + 1e-10
+        rcs_ac1 = (np.mean(rcs_centered[:-1] * rcs_centered[1:]) / rcs_var
+                   if n > 1 else 0.0)
+        continuous_flap_score = flap_fraction * max(rcs_ac1, 0)
+
+        # ═══ C. Enhanced RCS modulation ═══
+
+        # Modulation depth (P90-P10, robust to outliers)
+        rcs_mod_depth = np.percentile(rcs, 90) - np.percentile(rcs, 10)
+
+        # Periodicity index: max autocorrelation at lags 2-10
+        max_ac = 0.0
+        for lag in range(2, min(11, n)):
+            ac = np.mean(rcs_centered[:n-lag] * rcs_centered[lag:]) / rcs_var
+            if np.isfinite(ac) and ac > max_ac:
+                max_ac = ac
+        rcs_periodicity_idx = max_ac
+
+        # Bimodality: simplified dip test via bimodal coefficient
+        # BC = (skewness^2 + 1) / kurtosis. BC > 5/9 suggests bimodality.
+        rcs_std = np.std(rcs)
+        if rcs_std > 1e-10 and n > 3:
+            skew = float(np.mean(((rcs - rcs_mean) / rcs_std)**3))
+            kurt = float(np.mean(((rcs - rcs_mean) / rcs_std)**4))
+            rcs_bimodality = (skew**2 + 1) / max(kurt, 1e-10)
+        else:
+            rcs_bimodality = 0.0
+
+        # Fluctuation power: variance of first-differenced RCS
+        rcs_diff = np.diff(rcs)
+        rcs_fluctuation_power = np.var(rcs_diff) if len(rcs_diff) > 0 else 0.0
+
+        # ═══ D. 3D trajectory geometry ═══
+
+        # Vertical/horizontal ratio
+        mean_vert_speed = np.mean(np.abs(alt_rate))
+        mean_horiz_speed = np.mean(speeds)
+        vert_horiz_ratio = mean_vert_speed / max(mean_horiz_speed, 1e-6)
+
+        # Altitude trend strength (R^2 of linear fit)
+        if n > 2:
+            t_arr = np.array(times) - times[0]
+            slope, _, r_value, _, _ = linregress(t_arr, alts)
+            alt_trend_r2 = r_value**2
+        else:
+            alt_trend_r2 = 0.0
+
+        # Trajectory aspect ratio: altitude_range / horizontal_extent
+        total_hdist = dists.sum()
+        alt_range = np.ptp(alts)
+        traj_aspect_ratio = alt_range / max(total_hdist, 1.0)
+
+        # Altitude entropy: Shannon entropy of altitude histogram
+        if alt_range > 0.1:
+            n_bins = min(10, max(3, n // 5))
+            counts, _ = np.histogram(alts, bins=n_bins)
+            probs = counts / counts.sum()
+            probs = probs[probs > 0]
+            alt_entropy = -np.sum(probs * np.log(probs))
+        else:
+            alt_entropy = 0.0
+
+        # ═══ E. Multi-scale & complexity ═══
+
+        # Sinuosity ratio: first half vs second half
+        mid = n // 2
+        if mid > 2:
+            h1_total = sum(haversine(lons[i], lats[i], lons[i+1], lats[i+1])
+                           for i in range(mid - 1))
+            h1_straight = haversine(lons[0], lats[0], lons[mid-1], lats[mid-1])
+            h2_total = sum(haversine(lons[i], lats[i], lons[i+1], lats[i+1])
+                           for i in range(mid, n - 1))
+            h2_straight = haversine(lons[mid], lats[mid], lons[-1], lats[-1])
+            sin1 = h1_total / max(h1_straight, 1e-6)
+            sin2 = h2_total / max(h2_straight, 1e-6)
+            sinuosity_ratio = sin1 / max(sin2, 1e-6)
+            sinuosity_ratio = min(sinuosity_ratio, 10.0)  # cap
+        else:
+            sinuosity_ratio = 1.0
+
+        # RCS variance ratio: first half vs second half
+        if mid > 2:
+            rv1 = np.var(rcs[:mid])
+            rv2 = np.var(rcs[mid:])
+            rcs_var_ratio = rv1 / max(rv2, 1e-10)
+            rcs_var_ratio = min(rcs_var_ratio, 10.0)  # cap
+        else:
+            rcs_var_ratio = 1.0
+
+        # Speed trend: slope of linear fit to speed
+        if len(speeds) > 2:
+            t_speed = np.cumsum(dt) - dt[0] / 2
+            speed_trend = linregress(t_speed, speeds).slope
+        else:
+            speed_trend = 0.0
+
+        # Permutation entropy of RCS (ordinal pattern complexity)
+        # Order m=3: compare triplets of consecutive values
+        if n >= 6:
+            from itertools import permutations as _perms
+            m = 3
+            patterns = {}
+            for i in range(n - m + 1):
+                # Rank the m values
+                window = rcs[i:i+m]
+                pattern = tuple(np.argsort(window))
+                patterns[pattern] = patterns.get(pattern, 0) + 1
+            total_patterns = sum(patterns.values())
+            probs = np.array(list(patterns.values())) / total_patterns
+            perm_entropy = -np.sum(probs * np.log(probs))
+            # Normalize by log(m!) so it's in [0, 1]
+            import math as _math
+            perm_entropy /= np.log(float(_math.factorial(m)))
+        else:
+            perm_entropy = 0.0
+
+        return {
+            # A. Cross-channel coupling
+            "phys_speed_alt_corr": speed_alt_corr,
+            "phys_speed_rcs_corr": speed_rcs_corr,
+            "phys_bearing_rcs_corr": bearing_rcs_corr,
+            "phys_alt_rate_rcs_corr": alt_rate_rcs_corr,
+            "phys_speed_alt_rate_corr": speed_alt_rate_corr,
+            "phys_rcs_speed_interaction": rcs_speed_interaction,
+            # B. Biomechanics composites
+            "phys_bounding_index": bounding_index,
+            "phys_glide_ratio": glide_ratio,
+            "phys_thermal_score": thermal_score,
+            "phys_wing_loading_proxy": wing_loading_proxy,
+            "phys_flap_regularity": flap_regularity,
+            "phys_continuous_flap_score": continuous_flap_score,
+            # C. Enhanced RCS modulation
+            "phys_rcs_mod_depth": rcs_mod_depth,
+            "phys_rcs_periodicity_idx": rcs_periodicity_idx,
+            "phys_rcs_bimodality": rcs_bimodality,
+            "phys_rcs_fluctuation_power": rcs_fluctuation_power,
+            # D. 3D trajectory geometry
+            "phys_vert_horiz_ratio": vert_horiz_ratio,
+            "phys_alt_trend_r2": alt_trend_r2,
+            "phys_traj_aspect_ratio": traj_aspect_ratio,
+            "phys_alt_entropy": alt_entropy,
+            # E. Multi-scale & complexity
+            "phys_sinuosity_ratio": sinuosity_ratio,
+            "phys_rcs_var_ratio": rcs_var_ratio,
+            "phys_speed_trend": speed_trend,
+            "phys_perm_entropy": perm_entropy,
+        }
+    except Exception:
+        return defaults
+
+
+def extract_path_signature_features(hex_str: str, traj_time_str: str,
+                                     depth: int = 2, lead_lag: bool = True) -> dict:
+    """Path signature features (E45).
+
+    Signatures are mathematically invariant to time reparameterization,
+    meaning a bird's signature is the same regardless of sampling rate
+    or calendar time. This directly addresses our temporal shift problem.
+
+    Channels: altitude (normalized), RCS, speed, bearing_change.
+    Optional lead-lag augmentation doubles channels for richer representation.
+    """
+    import esig
+
+    pts = parse_ewkb_4d(hex_str)
+    times = parse_trajectory_time(traj_time_str)
+    n = len(pts)
+
+    # Determine expected output size for naming
+    n_channels = 4
+    if lead_lag:
+        n_channels *= 2
+    # Signature length = sum of n_channels^k for k=1..depth
+    sig_len = sum(n_channels**k for k in range(1, depth + 1))
+    prefix = f"sig_d{depth}_ll" if lead_lag else f"sig_d{depth}"
+    defaults = {f"{prefix}_{i}": 0.0 for i in range(sig_len)}
+
+    if n < 8:
+        return defaults
+
+    try:
+        lons = np.array([p[0] for p in pts])
+        lats = np.array([p[1] for p in pts])
+        alts = np.array([p[2] for p in pts])
+        rcs = np.array([p[3] for p in pts])
+        dt = np.maximum(np.diff(times), 0.001)
+        duration = times[-1] - times[0]
+
+        # Channel 1: normalized altitude (0 to 1)
+        alt_range = np.ptp(alts)
+        if alt_range > 0.1:
+            alt_norm = (alts - alts.min()) / alt_range
+        else:
+            alt_norm = np.zeros(n)
+
+        # Channel 2: RCS (standardized)
+        rcs_std = np.std(rcs)
+        if rcs_std > 1e-10:
+            rcs_norm = (rcs - np.mean(rcs)) / rcs_std
+        else:
+            rcs_norm = np.zeros(n)
+
+        # Channel 3: speed (from haversine, normalized by mean)
+        dists = np.array([haversine(lons[i], lats[i], lons[i+1], lats[i+1])
+                          for i in range(n - 1)])
+        speeds = dists / dt
+        speed_mean = np.mean(speeds) if np.mean(speeds) > 1e-6 else 1.0
+        speed_norm = np.concatenate([[speeds[0] / speed_mean], speeds / speed_mean])
+
+        # Channel 4: cumulative bearing change (normalized)
+        if n > 2:
+            bearings = np.arctan2(np.diff(lats), np.diff(lons))
+            b_changes = np.arctan2(np.sin(np.diff(bearings)), np.cos(np.diff(bearings)))
+            cum_bearing = np.concatenate([[0, 0], np.cumsum(b_changes)])
+            max_b = np.max(np.abs(cum_bearing)) if np.max(np.abs(cum_bearing)) > 1e-10 else 1.0
+            bearing_norm = cum_bearing / max_b
+        else:
+            bearing_norm = np.zeros(n)
+
+        # Assemble path: (n, 4)
+        path = np.column_stack([alt_norm, rcs_norm, speed_norm, bearing_norm])
+
+        # Lead-lag augmentation
+        if lead_lag and n > 1:
+            ll = np.zeros((2 * (n - 1), 8))
+            for i in range(n - 1):
+                ll[2 * i] = np.concatenate([path[i], path[i]])
+                ll[2 * i + 1] = np.concatenate([path[i], path[i + 1]])
+            path = ll
+
+        # Compute signature
+        sig = esig.stream2sig(path, depth)
+
+        result = {}
+        for i, val in enumerate(sig):
+            result[f"{prefix}_{i}"] = float(val) if np.isfinite(val) else 0.0
+
+        return result
+    except Exception:
+        return defaults
+
 def add_weakclass_tabular(df_feat: pd.DataFrame, df_orig: pd.DataFrame) -> pd.DataFrame:
     """Tabular features targeting weak classes (migration timing, size interactions)."""
     ts = pd.to_datetime(df_orig["timestamp_start_radar_utc"])
@@ -783,15 +1183,20 @@ def add_weakclass_tabular(df_feat: pd.DataFrame, df_orig: pd.DataFrame) -> pd.Da
 
 # ── Build full feature matrix ──────────────────────────────────────
 
-def build_features(df: pd.DataFrame, feature_sets: list[str] = None) -> pd.DataFrame:
+def build_features(df: pd.DataFrame, feature_sets: list[str] = None,
+                   sig_depth: int = 2, sig_lead_lag: bool = True) -> pd.DataFrame:
     """
     Build feature DataFrame from raw data.
 
     Args:
         df: raw train or test DataFrame
         feature_sets: list of feature sets to include.
-            Options: "core", "rcs_fft", "wavelet", "flight_mode", "tabular", "targeted"
+            Options: "core", "rcs_fft", "wavelet", "flight_mode", "tabular",
+                     "targeted", "zaugg_cwt", "weakclass", "flight_physics",
+                     "path_signature"
             Default: ["core", "rcs_fft", "tabular"]
+        sig_depth: signature truncation depth (2 or 3)
+        sig_lead_lag: whether to use lead-lag augmentation for signatures
     """
     if feature_sets is None:
         feature_sets = ["core", "rcs_fft", "tabular"]
@@ -800,6 +1205,8 @@ def build_features(df: pd.DataFrame, feature_sets: list[str] = None) -> pd.DataF
     use_flight = "flight_mode" in feature_sets
     use_zaugg = "zaugg_cwt" in feature_sets
     use_weakclass = "weakclass" in feature_sets
+    use_physics = "flight_physics" in feature_sets
+    use_signature = "path_signature" in feature_sets
 
     rows = []
     total = len(df)
@@ -819,6 +1226,12 @@ def build_features(df: pd.DataFrame, feature_sets: list[str] = None) -> pd.DataF
             feats.update(extract_zaugg_cwt_features(r.trajectory, r.trajectory_time))
         if use_weakclass:
             feats.update(extract_weakclass_features(r.trajectory, r.trajectory_time))
+        if use_physics:
+            feats.update(extract_flight_physics_features(r.trajectory, r.trajectory_time))
+        if use_signature:
+            feats.update(extract_path_signature_features(
+                r.trajectory, r.trajectory_time,
+                depth=sig_depth, lead_lag=sig_lead_lag))
         rows.append(feats)
     print(f"  Features: {total}/{total} done", flush=True)
 

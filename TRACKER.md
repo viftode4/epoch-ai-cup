@@ -431,8 +431,125 @@ were learning spurious correlations like "Pigeons = October afternoon" that don'
 3. ~~T20-23 Pseudo-labeling~~ DONE: 0.7487, discarded (-0.0048)
 4. ~~T06 MOMENT~~ DONE: 0.2275 standalone, discarded
 5. ~~E25 Temporal overfitting fix~~ DONE: 0.7050 (no temporal + weakclass + logit adj)
-6. **Submit E25D to Kaggle** -- verify LB improvement over 0.52
-7. **Re-run stacking (E15) without temporal features** -- tree+CNN+SVM+Rocket, all temporal-free
-8. **Multi-seed averaging on E25D** -- stabilize predictions
-9. **Optuna CatBoost tuning** -- CB dominates, small improvement = large impact
-10. **T19 TTA** on CNN -- marginal but free
+6. ~~Submit E25D to Kaggle~~ DONE: LB = 0.51
+7. ~~E32-E34 Honest evaluation sprint~~ DONE: E32=0.6808, logit adj NEGATIVE
+8. ~~E36-E38 External features~~ DONE: E38=0.3615 LOMO, LB=0.53 (BEST)
+9. ~~E39 Stacking~~ DONE: +0.004 LOMO (noise), sequence models can't generalize
+10. ~~E40 Augmentation~~ DONE: nothing beats baseline
+11. ~~E41 Month-adaptive post-processing~~ DONE: submitted alpha=0.2
+
+---
+
+## F. Flight Behavior Physics & Novel Techniques (Round 3, 2026-02-16)
+
+| # | Technique | Status | Result | Delta | Notes |
+|---|-----------|--------|--------|-------|-------|
+| T27 | Cross-channel correlation features | discarded | 0.3577 | -0.003 | E44: feature dilution on LOMO, Clutter +0.037 but Ducks -0.054 |
+| T28 | Biomechanics composite features | discarded | 0.3577 | -0.003 | E44: combined with T27-T31 as 24 features |
+| T29 | Enhanced RCS modulation features | discarded | 0.3577 | -0.003 | E44: combined with T27-T31 |
+| T30 | 3D trajectory geometry features | discarded | 0.3577 | -0.003 | E44: combined with T27-T31 |
+| T31 | Multi-scale & complexity features | discarded | 0.3577 | -0.003 | E44: combined with T27-T31 |
+| T32 | Path signatures (iisignature) | pending | -- | -- | E45: time-invariant trajectory encoding |
+| T33 | Zaugg CWT + SVM stacking | pending | -- | -- | E46: SVM on spectral features |
+| T34 | TTA (test-time augmentation) | pending | -- | -- | E47: free inference boost |
+
+### T27-T31 Combined: Physics Features -- DISCARDED (E44)
+
+**What**: 24 physics-based features in 5 groups:
+- A. Cross-channel coupling (6): speed_alt_corr, speed_rcs_corr, bearing_rcs_corr, etc.
+- B. Biomechanics composites (6): bounding_index, glide_ratio, thermal_score, wing_loading_proxy
+- C. Enhanced RCS modulation (4): rcs_mod_depth, periodicity_idx, bimodality, fluctuation_power
+- D. 3D trajectory geometry (4): vert_horiz_ratio, alt_trend_r2, traj_aspect_ratio, alt_entropy
+- E. Multi-scale & complexity (4): sinuosity_ratio, rcs_var_ratio, speed_trend, perm_entropy
+
+**Hypothesis**: Season-invariant features based on aerodynamics should help LOMO generalization.
+
+**Result (E44)**: LOMO 0.3577, delta = **-0.003** vs E38 base (0.3611).
+- Per-class: Clutter +0.037, BoP +0.002, Cormorants +0.004, Waders +0.001
+- But: Ducks -0.054, Geese -0.014, Pigeons -0.006
+- Feature stats: all 24 features have good variance and unique values (no degenerate features)
+
+**Why it failed**: The extra 24 features (139->163) cause feature dilution in the tree ensemble.
+With only 4 LOMO folds and 2601 samples, the models can't effectively use 163 features without
+overfitting. The Clutter improvement (+0.037) suggests some features have signal, but the noise
+from 20+ extra features overwhelms it. Consistent with the ablation finding that features are
+saturated for trees (core+tab 69 feats = 0.6994, best 105 = 0.7010).
+
+**Lesson**: Adding more features to tree models on 2601 samples with LOMO evaluation doesn't work.
+The model capacity for generalization across months is already maxed out. These features might
+work better with a feature-selection step or as inputs to a different model type (SVM, Ridge).
+
+### T32: Path Signatures -- DISCARDED (E45)
+
+**What**: Mathematical framework encoding multi-dimensional paths as hierarchical feature
+vectors via iterated integrals. Time-reparameterization invariant by construction.
+
+**Hypothesis**: Since signatures are invariant to sampling rate and temporal stretching, a
+bird's signature should be the same regardless of when in the year it was recorded. This
+directly addresses our temporal shift problem.
+
+**Implementation**: `esig` library (iisignature failed on numpy 2.x). 4 channels (alt, RCS,
+speed, bearing_change). `extract_path_signature_features()` added to src/features.py.
+
+**Results (E45 LOMO)**:
+- A: E38 base (139 feats): 0.3606
+- B: +sig depth-2 lead-lag (212 feats): 0.3479 (-0.013)
+- C: +sig depth-3 no-LL (224 feats): 0.3463 (-0.014)
+- D: +phys+sig d2 (261 feats): CRASHED (duplicate feature columns)
+
+**Verdict**: DISCARDED. Path signatures are mathematically elegant but add 73-85 features
+to a tree model trained on ~2000 LOMO samples. Feature dilution dominates. The invariance
+property doesn't compensate for the curse of dimensionality on small folds.
+
+### T33: Zaugg CWT + SVM Stacking -- DISCARDED (E46)
+
+**What**: Use existing `extract_zaugg_cwt_features()` (67 features) with SVM classifier
+as a stacking component.
+
+**Hypothesis**: CWT features HURT when given to tree models (-0.009) but the literature
+shows SVM achieves AUC 0.965+ on the same features. The features aren't bad -- they need
+the right model. SVM with RBF/Laplace kernel captures spectral shape that trees can't.
+
+**Results (E46 LOMO)**:
+- SVM standalone (67 CWT features): 0.2493
+- Tree standalone (E38, 139 features): 0.3597
+- Best blend (5% SVM): 0.3605 (+0.0008 = noise)
+- SVM per-month: Month 1: 0.287, Month 4: 0.334, Month 9: 0.220, Month 10: 0.327
+
+**Verdict**: DISCARDED. SVM on CWT features is much weaker than trees (0.25 vs 0.36).
+Zaugg (2008) worked on single wingbeat extraction at >100Hz sampling -- our 1-5Hz radar
+can't resolve wingbeat modulation. CWT features at our sampling rate capture only coarse
+spectral structure, not the fine wingbeat patterns that SVM excels at. No diversity gain.
+
+### T34: Test-Time Augmentation -- DISCARDED (E47)
+
+**What**: At inference, create multiple augmented views of each test trajectory, predict
+all, average predictions. Free boost with no retraining.
+
+**Implementation**: 10 augmented views with 2% Gaussian multiplicative noise on tabular
+features. Average predictions across augmentations.
+
+**Results (E47 LOMO)**:
+- Tree baseline: 0.3565
+- Tree TTA (10 views, 2% noise): 0.3448 (-0.012)
+- TTA improved Month 1 (0.294->0.330) but hurt Month 10 (0.387->0.390 minimal) and
+  overall was worse due to Clutter dropping 0.543->0.497 and Gulls 0.857->0.837.
+
+**Verdict**: DISCARDED. Noise injection hurts tree models. Trees make axis-aligned splits
+on exact feature values -- small perturbations push samples across decision boundaries
+unpredictably. TTA works for neural nets (smooth decision surfaces) not trees (discontinuous).
+
+### T35: MultiRocket + Stacking -- DISCARDED (E47)
+
+**What**: MultiRocket (49728 features from convolution kernels) + Ridge classifier as
+stacking component alongside tree ensemble.
+
+**Results (E47 LOMO)**:
+- MultiRocket+Ridge standalone: 0.2064 (terrible -- extreme overfit with 49728 features)
+- Tree standalone: 0.3565
+- Best blend (15% MultiRocket): 0.3576 (+0.001 = noise)
+- MiniRocket (E39) was 0.245 LOMO, MultiRocket is even worse at 0.206
+
+**Verdict**: DISCARDED. With only 2601 samples, 49728 features is absurd. Ridge
+regularization can't compensate for this extreme dimensionality mismatch. MultiRocket
+also can't generalize across months -- same fundamental limitation as CNN/MiniRocket.
