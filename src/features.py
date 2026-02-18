@@ -6,7 +6,7 @@ Combine them in experiments as needed.
 import numpy as np
 import pandas as pd
 from scipy.interpolate import interp1d
-from .data import parse_ewkb_4d, parse_trajectory_time
+from .data import CLASSES, parse_ewkb_4d, parse_trajectory_time
 
 # Canonical list of ALL temporal features that cause train/test leakage.
 # Train months [1,4,9,10] vs test months [2,5,9,10,12] -- 33% unseen.
@@ -1179,6 +1179,94 @@ def add_weakclass_tabular(df_feat: pd.DataFrame, df_orig: pd.DataFrame) -> pd.Da
     df_feat["rcs_for_size"] = df_feat["rcs_mean"] - (size_val * 3 - 30)
 
     return df_feat
+
+
+def add_external_prior_features(
+    df_feat: pd.DataFrame,
+    class_priors: dict[str, dict[str, float]],
+    include_morph: bool = True,
+    include_flight: bool = True,
+) -> pd.DataFrame:
+    """Add per-class prior-match features from external ornithology data.
+
+    These features compare observed track attributes to class-level priors
+    (speed, RCS proxy from mass, wing loading, wingbeat proxy).
+    """
+    if not include_morph and not include_flight:
+        return df_feat
+
+    required_cols = {"airspeed", "rcs_mean"}
+    missing = [c for c in sorted(required_cols) if c not in df_feat.columns]
+    if missing:
+        raise ValueError(f"Missing required columns for external priors: {missing}")
+
+    n = len(df_feat)
+    airspeed = df_feat["airspeed"].values.astype(float)
+    rcs_mean = df_feat["rcs_mean"].values.astype(float)
+    radar_size = (
+        df_feat["radar_bird_size"].values.astype(float)
+        if "radar_bird_size" in df_feat.columns
+        else np.zeros(n, dtype=float)
+    )
+    rcs_peak_freq = (
+        df_feat["rcs_peak_freq"].values.astype(float)
+        if "rcs_peak_freq" in df_feat.columns
+        else np.zeros(n, dtype=float)
+    )
+
+    speed_matrix = []
+    morph_matrix = []
+    joint_matrix = []
+
+    for cls in CLASSES:
+        p = class_priors.get(cls, {})
+        key = cls.lower().replace(" ", "_")
+        speed_ms = float(p.get("speed_ms", 12.0))
+        wingbeat_hz = float(p.get("wingbeat_hz", 6.0))
+        expected_rcs = float(p.get("expected_rcs_db", -24.0))
+        size_bin = float(p.get("size_bin", 1.0))
+        wing_loading = float(p.get("wing_loading", 120.0))
+
+        speed_gap = np.abs(airspeed - speed_ms) / max(speed_ms, 1.0)
+        rcs_gap = np.abs(rcs_mean - expected_rcs) / max(abs(expected_rcs), 1.0)
+
+        if include_flight:
+            df_feat[f"prior_f_speed_gap_{key}"] = speed_gap
+            df_feat[f"prior_f_speed_ratio_{key}"] = airspeed / max(speed_ms, 1.0)
+            df_feat[f"prior_f_wb_gap_{key}"] = np.abs(rcs_peak_freq - wingbeat_hz)
+            speed_matrix.append(speed_gap)
+
+        if include_morph:
+            speed_wl = 0.90 * np.sqrt(max(wing_loading, 1e-6))
+            df_feat[f"prior_m_rcs_gap_{key}"] = rcs_gap
+            df_feat[f"prior_m_size_gap_{key}"] = np.abs(radar_size - size_bin)
+            df_feat[f"prior_m_wingload_gap_{key}"] = np.abs(airspeed - speed_wl) / max(speed_wl, 1.0)
+            morph_matrix.append(rcs_gap)
+
+        if include_morph and include_flight:
+            joint_gap = 0.60 * speed_gap + 0.40 * rcs_gap
+            df_feat[f"prior_mf_joint_gap_{key}"] = joint_gap
+            joint_matrix.append(joint_gap)
+
+    def _add_best_match_features(prefix: str, matrix_cols: list[np.ndarray]) -> None:
+        if not matrix_cols:
+            return
+        mat = np.column_stack(matrix_cols)
+        order = np.argsort(mat, axis=1)
+        best_idx = order[:, 0]
+        second_idx = order[:, 1] if mat.shape[1] > 1 else order[:, 0]
+        best_val = mat[np.arange(mat.shape[0]), best_idx]
+        second_val = mat[np.arange(mat.shape[0]), second_idx]
+        df_feat[f"{prefix}_best_idx"] = best_idx
+        df_feat[f"{prefix}_best_gap"] = best_val
+        df_feat[f"{prefix}_margin"] = second_val - best_val
+        df_feat[f"{prefix}_mean_gap"] = mat.mean(axis=1)
+
+    _add_best_match_features("prior_f_summary", speed_matrix)
+    _add_best_match_features("prior_m_summary", morph_matrix)
+    _add_best_match_features("prior_mf_summary", joint_matrix)
+
+    return df_feat.replace([np.inf, -np.inf], np.nan).fillna(0)
 
 
 # ── Build full feature matrix ──────────────────────────────────────
