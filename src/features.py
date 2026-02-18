@@ -178,7 +178,112 @@ def add_tabular_features(df_feat: pd.DataFrame, df_orig: pd.DataFrame) -> pd.Dat
 
     df_feat["airspeed_vs_ground"] = df_feat["airspeed"] / df_feat["avg_ground_speed"].clip(lower=0.01)
 
+    # Pigeon temporal window: strongest single Pigeon discriminator
+    # (14:00 peak in October per EXPERIMENTS.md)
+    df_feat["is_pigeon_window"] = (
+        (hour >= 13) & (hour <= 16) & (month == 10)
+    ).astype(float)
+
     return df_feat
+
+
+# ── Wingbeat / CWT frequency features ──────────────────────────────
+
+def extract_wingbeat_features(hex_str: str, traj_time_str: str) -> dict:
+    """
+    Extract RCS spectral and periodicity features for bird species discrimination.
+
+    Radar tracks have low sampling rates (~0.08–0.5 Hz), so absolute wingbeat
+    frequency bands (0.5–20 Hz, Zaugg 2008) cannot be resolved. Instead we use
+    relative frequency bands (quartiles of Nyquist) that are always populated:
+
+        wb_band_q1: 0–25% of Nyquist  (slowest relative variation)
+        wb_band_q2: 25–50% of Nyquist
+        wb_band_q3: 50–75% of Nyquist
+        wb_band_q4: 75–100% of Nyquist (fastest relative variation)
+
+    Soaring birds concentrate power in Q1; periodic flappers in Q2–Q3; clutter is
+    broadband (flat across quartiles). All four features are always non-zero.
+
+    Also:
+        wb_dominant_freq:  peak frequency as fraction of Nyquist [0,1]
+        wb_total_power:    total spectral power (log-scale energy of RCS signal)
+        rcs_autocorr_lag1: normalised lag-1 autocorrelation (high → periodic flapper)
+        rcs_autocorr_lag5: normalised lag-5 autocorrelation
+        rcs_periodicity:   max autocorrelation in lags 2–15
+    """
+    from scipy.interpolate import interp1d
+    from scipy.signal import welch
+
+    pts   = parse_ewkb_4d(hex_str)
+    times = parse_trajectory_time(traj_time_str)
+    rcs   = np.array([p[3] for p in pts])
+    n     = len(pts)
+
+    defaults = {
+        "wb_band_q1": 0.0, "wb_band_q2": 0.0,
+        "wb_band_q3": 0.0, "wb_band_q4": 0.0,
+        "wb_dominant_freq": 0.0, "wb_total_power": 0.0,
+        "rcs_autocorr_lag1": 0.0, "rcs_autocorr_lag5": 0.0,
+        "rcs_periodicity": 0.0,
+    }
+    if n < 8:
+        return defaults
+
+    try:
+        # Interpolate RCS to uniform time grid
+        uniform_t   = np.linspace(times[0], times[-1], n)
+        fs          = 1.0 / max(uniform_t[1] - uniform_t[0], 0.01)
+        nyquist     = fs / 2.0
+        rcs_uniform = interp1d(times, rcs, kind="linear",
+                               fill_value="extrapolate")(uniform_t)
+        rcs_dc      = rcs_uniform - rcs_uniform.mean()
+
+        # Welch PSD
+        nperseg = min(n, 32)
+        freqs, psd = welch(rcs_dc, fs=fs, nperseg=nperseg)
+
+        def band_power(f_lo, f_hi):
+            mask = (freqs >= f_lo) & (freqs < f_hi)
+            return float(psd[mask].sum()) if mask.any() else 0.0
+
+        total = psd[1:].sum() + 1e-10   # exclude DC
+
+        # Relative frequency quartile bands (always populated)
+        p_q1 = band_power(0.0,          nyquist * 0.25)
+        p_q2 = band_power(nyquist * 0.25, nyquist * 0.50)
+        p_q3 = band_power(nyquist * 0.50, nyquist * 0.75)
+        p_q4 = band_power(nyquist * 0.75, nyquist)
+
+        # Dominant frequency as fraction of Nyquist (exclude DC bin)
+        peak_idx  = int(np.argmax(psd[1:])) + 1
+        dom_freq  = float(freqs[peak_idx]) / nyquist  # normalised [0,1]
+
+        # RCS autocorrelation (normalised, positive lags only)
+        rcs_norm = rcs_dc / (rcs_dc.std() + 1e-8)
+        acf_full = np.correlate(rcs_norm, rcs_norm, mode="full")
+        acf      = acf_full[n - 1:]          # lags 0, 1, 2, ...
+        acf      = acf / (acf[0] + 1e-8)    # lag-0 = 1.0
+
+        lag1 = float(acf[1]) if len(acf) > 1 else 0.0
+        lag5 = float(acf[5]) if len(acf) > 5 else 0.0
+        # Periodicity: max autocorrelation in lags 2–15
+        max_lag  = min(15, len(acf) - 1)
+        periodic = float(acf[2:max_lag + 1].max()) if max_lag >= 2 else 0.0
+
+        return {
+            "wb_band_q1":        p_q1 / total,
+            "wb_band_q2":        p_q2 / total,
+            "wb_band_q3":        p_q3 / total,
+            "wb_band_q4":        p_q4 / total,
+            "wb_dominant_freq":  dom_freq,
+            "wb_total_power":    float(total),
+            "rcs_autocorr_lag1": lag1,
+            "rcs_autocorr_lag5": lag5,
+            "rcs_periodicity":   periodic,
+        }
+    except Exception:
+        return defaults
 
 
 # ── Build full feature matrix ──────────────────────────────────────
@@ -190,11 +295,11 @@ def build_features(df: pd.DataFrame, feature_sets: list[str] = None) -> pd.DataF
     Args:
         df: raw train or test DataFrame
         feature_sets: list of feature sets to include.
-            Options: "core", "rcs_fft", "tabular"
+            Options: "core", "rcs_fft", "wingbeat", "tabular"
             Default: all of them.
     """
     if feature_sets is None:
-        feature_sets = ["core", "rcs_fft", "tabular"]
+        feature_sets = ["core", "rcs_fft", "wingbeat", "tabular"]
 
     rows = []
     for _, r in df.iterrows():
@@ -203,6 +308,8 @@ def build_features(df: pd.DataFrame, feature_sets: list[str] = None) -> pd.DataF
             feats.update(extract_core_features(r.trajectory, r.trajectory_time))
         if "rcs_fft" in feature_sets:
             feats.update(extract_rcs_fft_features(r.trajectory, r.trajectory_time))
+        if "wingbeat" in feature_sets:
+            feats.update(extract_wingbeat_features(r.trajectory, r.trajectory_time))
         rows.append(feats)
 
     feat_df = pd.DataFrame(rows)
