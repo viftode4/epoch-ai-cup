@@ -1059,6 +1059,94 @@ def extract_flight_physics_features(hex_str: str, traj_time_str: str) -> dict:
         return defaults
 
 
+def extract_absolute_wingbeat(hex_str: str, traj_time_str: str) -> dict:
+    """Absolute Hz wingbeat frequency features (E16).
+
+    Interpolates RCS to a fixed 20 Hz grid so that spectral peaks are in true
+    biological Hz rather than normalised-by-Nyquist fractions.  This separates:
+      - Geese/Cormorants  ~3-4 Hz
+      - Ducks/Pigeons     ~5-8 Hz
+      - Songbirds         ~10+ Hz / bursts
+      - Gulls / BoP       <1 Hz or DC
+    """
+    from scipy.signal import spectrogram, welch
+    from scipy.interpolate import interp1d as _interp1d
+
+    pts = parse_ewkb_4d(hex_str)
+    times = parse_trajectory_time(traj_time_str)
+
+    defaults = {
+        "wb_hz_peak": 0.0, "wb_hz_stability": 0.0,
+        "wb_band_0_1hz": 0.0, "wb_band_1_3hz": 0.0,
+        "wb_band_3_6hz": 0.0, "wb_band_6_10hz": 0.0,
+        "wb_energy_total": 0.0,
+    }
+
+    if len(pts) < 10:
+        return defaults
+
+    rcs = np.array([p[3] for p in pts])
+
+    try:
+        duration = times[-1] - times[0]
+        if duration <= 0:
+            return defaults
+        fs = 20.0
+        n_points = int(duration * fs)
+        if n_points < 32:
+            return defaults
+
+        t_new = np.linspace(times[0], times[-1], n_points)
+        f_interp = _interp1d(times, rcs, kind="linear", fill_value="extrapolate")
+        rcs_ac = f_interp(t_new) - np.mean(f_interp(t_new))
+
+        freqs, psd = welch(rcs_ac, fs=fs, nperseg=min(64, len(rcs_ac)))
+
+        def _band(f_lo, f_hi):
+            return np.sum(psd[(freqs >= f_lo) & (freqs < f_hi)])
+
+        total_p = np.sum(psd) + 1e-9
+        peak_hz = freqs[np.argmax(psd)]
+
+        f_spec, _, sxx = spectrogram(rcs_ac, fs=fs, nperseg=32, noverlap=16)
+        freq_stability = np.std(f_spec[np.argmax(sxx, axis=0)])
+
+        return {
+            "wb_hz_peak": float(peak_hz),
+            "wb_hz_stability": float(freq_stability),
+            "wb_band_0_1hz": float(_band(0, 1) / total_p),
+            "wb_band_1_3hz": float(_band(1, 3) / total_p),
+            "wb_band_3_6hz": float(_band(3, 6) / total_p),
+            "wb_band_6_10hz": float(_band(6, 10) / total_p),
+            "wb_energy_total": float(np.log1p(total_p)),
+        }
+    except Exception:
+        return defaults
+
+
+def extract_linearity_features(hex_str: str, traj_time_str: str) -> dict:
+    """Trajectory linearity features (E15/E16).
+
+    Measures how closely the path follows a straight line – low deviation
+    is characteristic of Cormorants flying on a fixed bearing.
+    """
+    pts = parse_ewkb_4d(hex_str)
+    if len(pts) < 3:
+        return {"lin_error_mean": 0.0}
+    coords = np.array([p[:2] for p in pts])
+    start, end = coords[0], coords[-1]
+    vec_line = end - start
+    len_line = np.linalg.norm(vec_line)
+    if len_line < 1e-6:
+        return {"lin_error_mean": 0.0}
+    vec_line_norm = vec_line / len_line
+    vec_pts = coords - start
+    proj = np.dot(vec_pts, vec_line_norm)
+    closest = np.outer(proj, vec_line_norm)
+    errors = np.linalg.norm(vec_pts - closest, axis=1)
+    return {"lin_error_mean": float(np.mean(errors / (len_line + 1e-6)))}
+
+
 def extract_path_signature_features(hex_str: str, traj_time_str: str,
                                      depth: int = 2, lead_lag: bool = True) -> dict:
     """Path signature features (E45).
@@ -1295,6 +1383,8 @@ def build_features(df: pd.DataFrame, feature_sets: list[str] = None,
     use_weakclass = "weakclass" in feature_sets
     use_physics = "flight_physics" in feature_sets
     use_signature = "path_signature" in feature_sets
+    use_abs_wb = "absolute_wingbeat" in feature_sets
+    use_linearity = "linearity" in feature_sets
 
     rows = []
     total = len(df)
@@ -1320,6 +1410,10 @@ def build_features(df: pd.DataFrame, feature_sets: list[str] = None,
             feats.update(extract_path_signature_features(
                 r.trajectory, r.trajectory_time,
                 depth=sig_depth, lead_lag=sig_lead_lag))
+        if use_abs_wb:
+            feats.update(extract_absolute_wingbeat(r.trajectory, r.trajectory_time))
+        if use_linearity:
+            feats.update(extract_linearity_features(r.trajectory, r.trajectory_time))
         rows.append(feats)
     print(f"  Features: {total}/{total} done", flush=True)
 
