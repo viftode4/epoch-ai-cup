@@ -1124,6 +1124,166 @@ def extract_absolute_wingbeat(hex_str: str, traj_time_str: str) -> dict:
         return defaults
 
 
+def extract_enhanced_bio_shape_features(hex_str: str, traj_time_str: str) -> dict:
+    """Enhanced biological shape + RCS texture features (E68).
+
+    Genuinely new features not covered by existing extractors:
+
+    1. Turn direction consistency — ratio of net to total turning.
+       High = consistent circling (BoP thermaling). Low = straight/erratic.
+    2. Max sustained turn fraction — longest run of same-direction turns.
+       Captures soaring spiral segments.
+    3. Turn reversal rate — sign changes in bearing per second.
+       High = bounding/erratic (Songbirds). Low = soaring or straight.
+    4. RCS dominant autocorrelation lag — step lag where |AC| is largest.
+       Proxy for dominant wingbeat period (Pigeons ~5-8 Hz lag).
+    5. RCS flap regularity — CV of flap bout durations.
+       Low CV = metronomic flapper (Pigeons/Waders). High = irregular.
+    6. RCS glide/flap variance ratio — contrast between wing modes.
+       High = clear flap-glide distinction (Gulls, BoP).
+    7. RCS burst fraction — fraction of time with variance >2× median.
+       High = bounding flight (Songbirds). Low = uniform flapping.
+    8. Path loop fraction — how much of the trajectory doubles back.
+       High = circling/hovering. Low = directed migration.
+    """
+    from scipy.stats import linregress
+
+    pts = parse_ewkb_4d(hex_str)
+    times = parse_trajectory_time(traj_time_str)
+    lons = np.array([p[0] for p in pts])
+    lats = np.array([p[1] for p in pts])
+    rcs = np.array([p[3] for p in pts])
+    n = len(pts)
+
+    defaults = {
+        "turn_dir_consistency": 0.0,
+        "max_sustained_turn_frac": 0.0,
+        "turn_reversal_rate": 0.0,
+        "rcs_dominant_ac_lag": 0.0,
+        "rcs_flap_regularity": 0.0,
+        "rcs_glide_flap_var_ratio": 0.0,
+        "rcs_burst_fraction": 0.0,
+        "path_loop_fraction": 0.0,
+    }
+
+    if n < 6:
+        return defaults
+
+    try:
+        duration = times[-1] - times[0]
+        if duration < 0.5:
+            return defaults
+
+        # ── 1. Turn direction consistency ──────────────────────────────
+        if n > 3:
+            bearings = np.arctan2(np.diff(lats), np.diff(lons))
+            b_changes = np.arctan2(np.sin(np.diff(bearings)),
+                                   np.cos(np.diff(bearings)))
+            total_turn = np.sum(np.abs(b_changes))
+            net_turn = abs(np.sum(b_changes))
+            turn_consistency = net_turn / max(total_turn, 1e-6)
+            turn_consistency = min(turn_consistency, 1.0)
+
+            # ── 2. Max sustained turn fraction ────────────────────────
+            # Longest run of same-sign bearing changes / n
+            signs = np.sign(b_changes)
+            max_run = 0
+            cur_run = 1
+            for i in range(1, len(signs)):
+                if signs[i] == signs[i - 1] and signs[i] != 0:
+                    cur_run += 1
+                    max_run = max(max_run, cur_run)
+                else:
+                    cur_run = 1
+            max_sustained = max_run / max(len(b_changes), 1)
+
+            # ── 3. Turn reversal rate ──────────────────────────────────
+            sign_changes = np.sum(
+                (signs[:-1] != signs[1:]) & (signs[:-1] != 0) & (signs[1:] != 0)
+            )
+            reversal_rate = sign_changes / max(duration, 0.01)
+        else:
+            b_changes = np.array([0.0])
+            turn_consistency = 0.0
+            max_sustained = 0.0
+            reversal_rate = 0.0
+
+        # ── 4. RCS dominant autocorrelation lag ───────────────────────
+        rcs_centered = rcs - rcs.mean()
+        rcs_var = np.var(rcs) + 1e-10
+        best_ac = 0.0
+        best_lag = 0.0
+        for lag in range(1, min(n // 2, 20)):
+            ac = np.mean(rcs_centered[:n - lag] * rcs_centered[lag:]) / rcs_var
+            if abs(ac) > abs(best_ac):
+                best_ac = ac
+                best_lag = lag
+        # Normalize lag to [0,1] (relative to half-length)
+        rcs_dom_lag = best_lag / max(n // 2, 1)
+
+        # ── 5 & 6: Flap/glide segmentation for regularity + contrast ──
+        win = max(3, n // 8)
+        rcs_local_var = np.array([
+            np.var(rcs[max(0, i - win):i + 1]) for i in range(n)
+        ])
+        is_flap = rcs_local_var > np.median(rcs_local_var)
+
+        # Flap bout durations
+        flap_durs = []
+        glide_durs = []
+        seg_start = 0
+        for i in range(1, n):
+            if is_flap[i] != is_flap[seg_start]:
+                seg_dur = times[i] - times[seg_start]
+                (flap_durs if is_flap[seg_start] else glide_durs).append(seg_dur)
+                seg_start = i
+        seg_dur = times[-1] - times[seg_start]
+        (flap_durs if is_flap[seg_start] else glide_durs).append(seg_dur)
+
+        # Flap regularity: CV of bout durations
+        if len(flap_durs) > 1:
+            fdur_arr = np.array(flap_durs)
+            rcs_flap_reg = np.std(fdur_arr) / max(np.mean(fdur_arr), 1e-6)
+            rcs_flap_reg = min(rcs_flap_reg, 5.0)
+        else:
+            rcs_flap_reg = 0.0
+
+        # Glide/flap variance contrast
+        flap_var = rcs_local_var[is_flap].mean() if is_flap.any() else 1e-10
+        glide_var = rcs_local_var[~is_flap].mean() if (~is_flap).any() else 1e-10
+        gf_var_ratio = flap_var / max(glide_var, 1e-10)
+        gf_var_ratio = min(gf_var_ratio, 20.0)
+
+        # ── 7. RCS burst fraction ──────────────────────────────────────
+        # Fraction of windows with variance > 2× median
+        burst_threshold = 2.0 * np.median(rcs_local_var)
+        burst_frac = float((rcs_local_var > burst_threshold).mean())
+
+        # ── 8. Path loop fraction ──────────────────────────────────────
+        # How often does the bird revisit its bounding box centre?
+        # Measured as net displacement / total path × complement
+        net_disp = haversine(lons[0], lats[0], lons[-1], lats[-1])
+        total_path = sum(
+            haversine(lons[i], lats[i], lons[i + 1], lats[i + 1])
+            for i in range(n - 1)
+        )
+        # High loop fraction means the path loops back (net << total)
+        loop_frac = 1.0 - min(net_disp / max(total_path, 1e-6), 1.0)
+
+        return {
+            "turn_dir_consistency": float(turn_consistency),
+            "max_sustained_turn_frac": float(max_sustained),
+            "turn_reversal_rate": float(reversal_rate),
+            "rcs_dominant_ac_lag": float(rcs_dom_lag),
+            "rcs_flap_regularity": float(rcs_flap_reg),
+            "rcs_glide_flap_var_ratio": float(gf_var_ratio),
+            "rcs_burst_fraction": float(burst_frac),
+            "path_loop_fraction": float(loop_frac),
+        }
+    except Exception:
+        return defaults
+
+
 def extract_linearity_features(hex_str: str, traj_time_str: str) -> dict:
     """Trajectory linearity features (E15/E16).
 
@@ -1369,7 +1529,7 @@ def build_features(df: pd.DataFrame, feature_sets: list[str] = None,
         feature_sets: list of feature sets to include.
             Options: "core", "rcs_fft", "wavelet", "flight_mode", "tabular",
                      "targeted", "zaugg_cwt", "weakclass", "flight_physics",
-                     "path_signature"
+                     "path_signature", "enhanced_bio_shape"
             Default: ["core", "rcs_fft", "tabular"]
         sig_depth: signature truncation depth (2 or 3)
         sig_lead_lag: whether to use lead-lag augmentation for signatures
@@ -1385,6 +1545,7 @@ def build_features(df: pd.DataFrame, feature_sets: list[str] = None,
     use_signature = "path_signature" in feature_sets
     use_abs_wb = "absolute_wingbeat" in feature_sets
     use_linearity = "linearity" in feature_sets
+    use_enhanced = "enhanced_bio_shape" in feature_sets
 
     rows = []
     total = len(df)
@@ -1414,6 +1575,8 @@ def build_features(df: pd.DataFrame, feature_sets: list[str] = None,
             feats.update(extract_absolute_wingbeat(r.trajectory, r.trajectory_time))
         if use_linearity:
             feats.update(extract_linearity_features(r.trajectory, r.trajectory_time))
+        if use_enhanced:
+            feats.update(extract_enhanced_bio_shape_features(r.trajectory, r.trajectory_time))
         rows.append(feats)
     print(f"  Features: {total}/{total} done", flush=True)
 
