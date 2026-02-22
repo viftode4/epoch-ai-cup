@@ -60,7 +60,20 @@ Track every experiment run. Add a row when you run something, even if it fails.
 | E51 | 2026-02-18 | e42_e50_blend | LOMO 0.3807 | 0.328 | 0.567 | 0.064 | 0.400 | 0.434 | 0.859 | 0.261 | 0.446 | 0.067 | **Post-processing blend of strong historical model + new external-prior model.** Blended `E42` and `E50` OOF/test predictions with alpha sweep. Best at `alpha_e50=0.35` -> **0.3807**, beating E42 alone (0.3743) and all new standalone runs. Saved `e51_e42_e50_blend_0.3807_20260218_2148.csv`. |
 | E52 | 2026-02-18 | month_aware_blend | OOF 0.3904 (shared=0.3840) | 0.330 | 0.614 | 0.061 | 0.385 | 0.459 | 0.853 | 0.281 | 0.451 | 0.082 | **Kaggle-driven continuation after E50 > E51 on LB.** Kept E50 for unseen months and blended E42 into shared months only (Sep/Oct). Grid search found `w9=0.75, w10=0.55`; conservative variant also saved. Submissions: `e52_monthaware_w9_0.75_w10_0.55_0.3904_20260218_2156.csv`, `e52_monthaware_cons_w9_0.60_w10_0.44_0.3869_20260218_2156.csv`. |
 | E53 | 2026-02-18 | unseen_month_prior_sweep | LB 0.55 (a0.15) | -- | -- | -- | -- | -- | -- | -- | -- | -- | **Unseen-month-only GBIF prior sweep on top of E50 and E52.** Applied Bayesian adjustment only for months {2,5,12} with alpha in {0.15,0.25,0.35,0.50}. **Kaggle result:** `e53_e50_unseenprior_a0.15_20260218_2157.csv` scored **0.55 (new best LB)**. Other E53 variants not evaluated on Kaggle yet. |
-| E54 | 2026-02-18 | unseen_month_specific | -- | -- | -- | -- | -- | -- | -- | -- | -- | -- | **Month-specific unseen adjustment on top of E50 (post-E53 success).** Diagnosis: uniform `a=0.15` mostly changed Feb/Dec and weakly touched May. Generated two targeted variants: `spring_tilt {m2=0.15,m5=0.28,m12=0.15}` and `winter_tilt {m2=0.22,m5=0.12,m12=0.24}`. Saved `e54_e50_spring_tilt_m2_0.15_m5_0.28_m12_0.15_20260218_2229.csv` and `e54_e50_winter_tilt_m2_0.22_m5_0.12_m12_0.24_20260218_2229.csv`. |
+| E54 | 2026-02-18 | unseen_month_specific | LB 0.56 (winter) / 0.55 (spring) | -- | -- | -- | -- | -- | -- | -- | -- | -- | **Month-specific unseen adjustment on top of E50 (post-E53 success).** Diagnosis: uniform `a=0.15` mostly changed Feb/Dec and weakly touched May. Two targeted variants were tested on Kaggle: `spring_tilt {m2=0.15,m5=0.28,m12=0.15}` scored **0.55**, while `winter_tilt {m2=0.22,m5=0.12,m12=0.24}` scored **0.56 (new best LB)**. Saved `e54_e50_spring_tilt_m2_0.15_m5_0.28_m12_0.15_20260218_2229.csv` and `e54_e50_winter_tilt_m2_0.22_m5_0.12_m12_0.24_20260218_2229.csv`. |
+| E55 | 2026-02-19 | winter_refinement | LB 0.56 (balanced/stronger) | -- | -- | -- | -- | -- | -- | -- | -- | -- | **Local refinement around winning E54 winter tilt.** Hypothesis: keep May correction low while increasing winter correction slightly. Kaggle: `winter_balanced {m2=0.24,m5=0.10,m12=0.26}` = **0.56**, `winter_stronger {m2=0.26,m5=0.10,m12=0.30}` = **0.56** (no improvement vs E54 winter). `winter_stronger_gated` not evaluated on Kaggle. Files: `e55_winter_balanced_m2_0.24_m5_0.10_m12_0.26_20260219_1211.csv`, `e55_winter_stronger_m2_0.26_m5_0.10_m12_0.30_20260219_1211.csv`, `e55_winter_stronger_gated_m2_0.26_m5_0.10_m12_0.30_gated_20260219_1211.csv`. |
+| E56 | 2026-02-20 | may_off_probe | LB 0.55 | -- | -- | -- | -- | -- | -- | -- | -- | -- | **Diagnostic probe (Kaggle tested):** keep the winning winter correction and turn **May correction off**. Result: **0.55** (worse than the 0.56 winter-tilt baseline), implying May adjustment is beneficial (or at least not safely removable). Variant: `{m2=0.22,m5=0.00,m12=0.24}` saved as `e56_e50_may_off_m2_0.22_m5_0.00_m12_0.24_20260220_1337.csv`. |
+| E57 | 2026-02-20 | may_alpha_adaptive | LB 0.56 (all) | -- | -- | -- | -- | -- | -- | -- | -- | -- | **Adaptive May-alpha candidates (smart order, not grid).** Fixed winter to the winning values (`m2=0.22, m12=0.24`) and tested 4 informative May probes: `m5 ∈ {0.06, 0.09, 0.15, 0.18}`. **Kaggle:** all four scored **0.56** (no separation at 2-decimal LB precision), indicating a plateau in this May-alpha range. Files: `e57_e50_mayprobe_m2_0.22_m5_0.18_m12_0.24_20260220_1508.csv`, `...m5_0.06...`, `...m5_0.15...`, `...m5_0.09...`. |
+| E58 | 2026-02-21 | winter_airspeed_gate | LB 0.55 (k135) | -- | -- | -- | -- | -- | -- | -- | -- | -- | **Next hypothesis tested (FAILED):** residual winter errors are within-month ambiguities (especially Gulls vs Waders), not month-prior magnitude. Applied an additional **airspeed-gated** boost to Waders only when `top1=Gulls`, `top2=Waders`, margin < 0.15, and airspeed exceeds a month-specific threshold (Feb >= 15.5, Dec >= 14.0). **Kaggle:** `k135` scored **0.55** (worse than 0.56 baseline), so this gate over-corrects; do NOT pursue larger k. Files: `e58_winter_airspeed_gate_k135_20260221_2117.csv`, `e58_winter_airspeed_gate_k155_20260221_2117.csv` (not evaluated). |
+| E59 | 2026-02-21 | col_de_la_croix_transfer | LOMO 0.3470 | 0.345 | 0.487 | 0.054 | 0.315 | 0.417 | 0.863 | 0.152 | 0.450 | 0.042 | **Trained XGBoost auxiliary model on 1988 Col de la Croix dataset.** Mapped 4 kinematics features and blended 8 class probabilities into E38 full feature stack. Delta: **-0.0018 LOMO**. Minor improvements in Cormorants/Ducks/Pigeons outweighed by drops in Songbirds/Clutter/BoP. **Discarded.** |
+| E60 | 2026-02-21 | optuna_lgbm_tuned | SKF 0.7524 | -- | -- | -- | -- | -- | -- | -- | -- | -- | **Optuna tuned LightGBM** (E38 full feature stack, 139 feats, CPU). Best params: lr=0.0159, leaves=65, depth=9, mcs=26, subsample=0.673, colsample=0.503, reg_a=0.00338, reg_l=0.0585. Saved `e60_lgbm_tuned_0.7524_20260221_2328.csv`. |
+| E61 | 2026-02-21 | focal_loss_lgbm | SKF 0.5076 | 0.425 | 0.790 | 0.058 | 0.295 | 0.343 | 0.887 | 0.715 | 0.656 | 0.399 | **Custom multi-class focal loss attempt** in LightGBM. Result collapsed; objective/hessian approximation likely wrong. **Do not submit.** Saved `e61_lgbm_focal_loss_0.5076_20260221_2148.csv`. |
+| E62 | 2026-02-21 | soft_pseudolabels | **LB 0.50** (SKF 0.7711) | 0.658 | 0.947 | 0.393 | 0.746 | 0.823 | 0.969 | 0.892 | 0.867 | 0.645 | **Soft pseudo-labeling from E54 preds** (p>0.05) added 7030 pseudo samples (downweighted). SKF jumped, but test argmax distribution collapsed to Waders (0 Gulls/Songbirds top-1). **Kaggle: 0.50 → discard.** Saved `e62_soft_pseudolabels_0.7711_20260221_2150.csv`. |
+| E63 | 2026-02-21 | blend_e54_e60_monthaware | **LB 0.55** | -- | -- | -- | -- | -- | -- | -- | -- | -- | **Month-aware blend**: keep E54 for unseen months, inject 10% of E60 on months 9/10. **Kaggle: 0.55 (worse than 0.56 baseline).** Saved `e63_blend_e54_e60_m9_0.10_m10_0.10_20260221_2338.csv`. |
+| E64 | 2026-02-21 | blend_e54_e62_unseen | LB TBD | -- | -- | -- | -- | -- | -- | -- | -- | -- | **Unseen-month blend**: inject 5% of E62 into E54 for months {2,5,12}. Saved `e64_blend_e54_e62_unseen_w0.05_20260221_2338.csv`. |
+| E65 | 2026-02-21 | blend_e54_e60_monthaware_stronger | **LB 0.54** | -- | -- | -- | -- | -- | -- | -- | -- | -- | **Stronger month-aware blend**: inject 20% of E60 on months 9/10. **Kaggle: 0.54 (worse).** Saved `e65_blend_e54_e60_m9_0.20_m10_0.20_20260221_2339.csv`. |
+| E66 | 2026-02-22 | gw_specialist_correction | LOMO 0.3608 | -- | -- | -- | -- | -- | -- | -- | -- | -- | **Learned Gulls↔Waders correction layer** (binary specialist \(s(x)=P(\text{Waders}\mid x)\); redistribute pair mass \(S=p_G+p_W\): \(p'_W=S\cdot s,\; p'_G=S\cdot(1-s)\)). Specialist AP=0.1449 and net **-0.0017 LOMO** vs E50 base. Submissions saved (not Kaggle-tested): `e66_gw_specialist_then_priors_20260222_0013.csv`, `e66_priors_then_gw_specialist_20260222_0013.csv`. |
+| E67 | 2026-02-22 | gatedpriors_margin | **LB 0.56** (tau=0.10/0.15) | -- | -- | -- | -- | -- | -- | -- | -- | -- | **Uncertainty-gated unseen-month priors (E54 alphas)**: apply GBIF prior tilt only when top-2 margin \(p_{top1}-p_{top2}<\\tau\). Kaggle: `tau=0.05` -> **0.55** (99 rows adjusted), `tau=0.10` -> **0.56** (190 rows), `tau=0.15` -> **0.56** (265 rows). Files: `e67_gatedpriors_tau0.05_20260222_0015.csv`, `...tau0.10...`, `...tau0.15...`. |
 
 ## CRITICAL: Temporal Overfitting Discovery (2026-02-14)
 
@@ -140,3 +153,90 @@ Systematic test of every feature group and model type in isolation.
 - **Logit adjustment is NEGATIVE** when evaluated honestly: split-half delta = -0.0018. Per-class tau optimized on same OOF was +0.006 (fake). All fixed taus are also worse. **DROP IT.**
 - **Feature pruning HURTS**: top adversarial features are also top classification features. Removing top-5 costs -0.055 mAP. The biological shift cannot be reduced without destroying classification signal.
 - **Bootstrap std = 0.016** means a delta must exceed 0.032 to be meaningful. Most "gains" from E25-E31 are within noise.
+
+## Mathematical Formalization (2026-02-22)
+
+This section captures the *mathematical structure* behind the experiments, so future iterations reuse the same assumptions and the post-processing math.
+
+### Notation
+
+- Dataset consists of tracks \(i=1..N\) with:
+  - \(x_i\): features (trajectory-derived + non-privileged tabular),
+  - \(m_i\): month extracted from timestamp,
+  - \(y_i \in \{1,\dots,K\}\): class label (train only), with \(K=9\).
+- Model outputs a probability vector \(p_i = f_\theta(x_i) \in \Delta^{K-1}\), where \(p_{i,c}\) is the score for class \(c\).
+
+### Evaluation metric (macro mAP)
+
+Competition score is macro-averaged Average Precision:
+
+\[
+\text{mAP}=\frac{1}{K}\sum_{c=1}^K \text{AP}_c
+\]
+
+where \(\text{AP}_c\) is computed by `sklearn.metrics.average_precision_score(y_true==c, p_{:,c})`.
+
+**Important consequence:** \(\text{AP}_c\) depends on the *global ranking* of \(p_{i,c}\) across **all** test samples, including cross-month comparisons.
+
+### Shift model (why SKF can mislead)
+
+- Train months: \(\{1,4,9,10\}\)
+- Test months: \(\{2,5,9,10,12\}\) (33% unseen months)
+
+Standard StratifiedKFold estimates performance under the *training-month mixture*. The public test distribution uses a different month mixture (and includes unseen months), so SKF is an optimistic model-selection signal. LOMO and Kaggle LB are the only reliable selection criteria once temporal features are removed.
+
+### Month-prior tilt post-processing (E53–E55, works on LB)
+
+Let:
+- \(\pi_{\text{train}}(c)\): train prior (empirical class frequency on train),
+- \(\pi_{\text{ext}}(c\mid m)\): external month prior (GBIF seasonal indices).
+
+We adjust predictions by a month-specific prior tilt:
+
+\[
+q_{i,c} \propto p_{i,c}\cdot\Big(\frac{\pi_{\text{ext}}(c\mid m_i)}{\pi_{\text{train}}(c)}\Big)^{\alpha_{m_i}}
+\quad\text{then renormalize rows.}
+\]
+
+Equivalently (log-space):
+
+\[
+\log q_{i,c} = \log p_{i,c} + \alpha_{m_i}\log\Big(\frac{\pi_{\text{ext}}(c\mid m_i)}{\pi_{\text{train}}(c)}\Big) - \log Z_i.
+\]
+
+Mechanism: within each month, multiplying scores by a constant does not change within-month ranking, but it *does* re-rank examples **across months**, which affects \(\text{AP}_c\). This is why month priors can move the leaderboard.
+
+### Uncertainty-gated priors (E67, next step)
+
+Uniform month tilts can harm confident cases. Define per-sample uncertainty via the top-2 margin:
+
+\[
+\text{margin}_i = p_{i,\text{top1}} - p_{i,\text{top2}}.
+\]
+
+Apply the prior tilt only when the model is uncertain:
+
+\[
+q_{i,c} \propto p_{i,c}\cdot\Big(\frac{\pi_{\text{ext}}(c\mid m_i)}{\pi_{\text{train}}(c)}\Big)^{\alpha_{m_i}\,\mathbf{1}[\text{margin}_i<\tau]}
+\quad\text{then renormalize.}
+\]
+
+This makes the correction *example-dependent* (can improve rankings within a month) while preserving confident predictions.
+
+### Blending / ensembling predictions
+
+Given two predictors \(P^A, P^B \in \mathbb{R}^{N\times K}\), a linear blend is:
+
+\[
+P = (1-w)P^A + wP^B,\quad w\in[0,1]
+\]
+
+with optional row-renormalization. Month-aware blending uses \(w=w(m)\) per month (e.g., adjust only for months 9/10).
+
+### Pseudo-labeling (why it can collapse under shift)
+
+Soft pseudo-labeling adds unlabeled test samples back into training using model probabilities as targets (or weighted hard-label expansions). This creates a feedback loop: if the pseudo-label distribution is biased (common under shift + imbalance), training moves the model toward a self-consistent but wrong fixed point. E62 is the canonical failure: very high SKF but LB collapse.
+
+### Label-shift correction caveat
+
+Class-prior estimation methods based on inverting a confusion matrix (e.g., BBSE / EM label-shift corrections) can be numerically unstable when the matrix is ill-conditioned or when assumptions (\(p(x\mid y)\) invariant) are violated. In our setting, naïve implementations can collapse to a single class (Waders), so any such method needs strong regularization and careful validation.
