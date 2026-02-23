@@ -31,6 +31,29 @@ _WADER_FAMILIES = {
 _RAPTOR_ORDERS = {"Accipitriformes", "Falconiformes", "Strigiformes"}
 
 # Priors from radar ornithology literature and previous internal ablations.
+# Hardcoded per-class wing morphology from ornithological literature.
+# Used as fallback when BirdWingData_tidy_ver2.1.csv is absent.
+_WINGSPAN_M = {
+    "Birds of Prey": 1.10,
+    "Cormorants": 1.30,
+    "Ducks": 0.90,
+    "Geese": 1.50,
+    "Gulls": 1.20,
+    "Pigeons": 0.62,
+    "Songbirds": 0.22,
+    "Waders": 0.52,
+}
+_WING_AREA_M2 = {
+    "Birds of Prey": 0.140,
+    "Cormorants": 0.120,
+    "Ducks": 0.065,
+    "Geese": 0.200,
+    "Gulls": 0.115,
+    "Pigeons": 0.042,
+    "Songbirds": 0.009,
+    "Waders": 0.025,
+}
+
 _SPEED_PRIOR_MS = {
     "Birds of Prey": 11.8,
     "Clutter": 2.0,
@@ -193,10 +216,15 @@ def build_external_class_priors(
     col_path = data_root / "data" / "other_datasets" / "Col de la Croix 1988.csv"
 
     avonet = pd.read_excel(avonet_path, sheet_name="AVONET1_BirdLife")
-    birdwing = pd.read_csv(birdwing_path)
+    if birdwing_path.exists():
+        birdwing = pd.read_csv(birdwing_path)
+        bw_masks = _birdwing_masks(birdwing)
+    else:
+        birdwing = pd.DataFrame(columns=["Order_IOC13.1", "Family_IOC13.1",
+                                         "Species_IOC13.1", "wingspan_m", "wing.area_m2"])
+        bw_masks = {cls: pd.Series(dtype=bool) for cls in CLASSES}
 
     av_masks = _avonet_masks(avonet)
-    bw_masks = _birdwing_masks(birdwing)
     col_speed = _load_col_de_la_croix_speed_priors(col_path)
 
     defaults = {
@@ -220,15 +248,20 @@ def build_external_class_priors(
             av_m = av_masks[cls]
             bw_m = bw_masks[cls]
             av_cls = avonet.loc[av_m]
-            bw_cls = birdwing.loc[bw_m]
+            bw_cls = birdwing.loc[bw_m] if len(bw_m) > 0 else birdwing.iloc[0:0]
 
             mass_g = _safe_mean(av_cls["Mass"], defaults["mass_g"])
             wing_mm = _safe_mean(av_cls["Wing.Length"], defaults["wing_mm"])
             hwi = _safe_mean(av_cls["Hand-Wing.Index"], defaults["hwi"])
-            span = _safe_mean(bw_cls["wingspan_m"], defaults["wingspan_m"])
-            area = _safe_mean(bw_cls["wing.area_m2"], defaults["wing_area_m2"])
             n_av = int(av_m.sum())
-            n_bw = int(bw_m.sum())
+            n_bw = int(bw_m.sum()) if len(bw_m) > 0 else 0
+            if n_bw > 0:
+                span = _safe_mean(bw_cls["wingspan_m"], defaults["wingspan_m"])
+                area = _safe_mean(bw_cls["wing.area_m2"], defaults["wing_area_m2"])
+            else:
+                # BirdWingData absent: use hardcoded literature values per class.
+                span = _WINGSPAN_M.get(cls, defaults["wingspan_m"])
+                area = _WING_AREA_M2.get(cls, defaults["wing_area_m2"])
 
         speed_ms = float(_SPEED_PRIOR_MS[cls])
         if cls in col_speed:
