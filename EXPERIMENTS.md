@@ -49,7 +49,7 @@ Track every experiment run. Add a row when you run something, even if it fails.
 | E39 | 2026-02-15 | temporal_free_stacking | SKF 0.6900 / LOMO 0.3356 | -- | -- | -- | -- | -- | -- | -- | -- | -- | **Tree+MiniRocket+CNN stacking (no temporal).** LOMO: Tree 0.332, Rocket 0.245, CNN 0.235. Best blend 80/10/10 = 0.3356 (+0.004 vs tree alone = noise). Sequence models too weak to help LOMO. |
 | E40 | 2026-02-16 | balanced_augmentation | LOMO 0.3609 (best=A) | -- | -- | -- | -- | -- | -- | -- | -- | -- | **Mixup augmentation + regularization sweep on E38 features.** 6 configs tested. A (E38 baseline): 0.3609. B (Mixup+base): 0.3592. C (mid reg): 0.3497. D (Mixup+mid): 0.3542. E (heavy reg): 0.3226. F (Mixup+heavy): 0.3452. **Nothing beats E38 baseline.** Augmentation and heavier reg both hurt. |
 | E41 | 2026-02-16 | quick_ensembles | -- | -- | -- | -- | -- | -- | -- | -- | -- | -- | **Post-processing experiments on existing preds.** Month detection via daylight hours: perfect (176 Feb, 303 May, 457 Sep, 803 Oct, 133 Dec). E32+E38 blend, month-adaptive GBIF reweighting. Submissions: e41a (blend), e41b (month-adaptive), e41c (blend+adaptive). |
-| E42 | 2026-02-16 | minority_specialists | LOMO 0.3799 | -- | -- | -- | -- | -- | -- | -- | -- | -- | **Binary CB specialists per minority class.** Confusion analysis: Gulls absorb 44-54% of minority preds. Binary CB beats multiclass for Cormorants (+0.034), Waders (+0.040), Pigeons (+0.028). BoP/Ducks: multiclass better. Best blend alpha=0.4 LOMO=0.3799 (+0.019 vs E38 base 0.3609). Top features: Cormorants (lon_std, rcs_range), Waders (airspeed, wind_speed), Pigeons (lon_mean, total_turning). |
+| E42 | 2026-02-16 | minority_specialists | **LB 0.53** (LOMO 0.3799) | -- | -- | -- | -- | -- | -- | -- | -- | -- | **Binary CB specialists per minority class.** Confusion analysis: Gulls absorb 44-54% of minority preds. Binary CB beats multiclass for Cormorants (+0.034), Waders (+0.040), Pigeons (+0.028). BoP/Ducks: multiclass better. Best blend alpha=0.4 LOMO=0.3799 (+0.019 vs E38 base 0.3609). **Kaggle:** `e42_blend40_0.3799_20260216_0020.csv` scored **0.53** → LOMO does not translate to unseen months. Top features: Cormorants (lon_std, rcs_range), Waders (airspeed, wind_speed), Pigeons (lon_mean, total_turning). |
 | E44 | 2026-02-16 | flight_physics | LOMO 0.3577 | 0.369 | 0.566 | 0.058 | 0.332 | 0.395 | 0.857 | 0.142 | 0.460 | 0.040 | **T27-T31: 24 physics features (cross-channel, biomechanics, RCS modulation, 3D geometry, complexity).** LOMO -0.003 vs E38 (0.361->0.358). Clutter +0.037, Cormorants +0.004, but Ducks -0.054. Feature dilution on LOMO. SKF unchanged at 0.76. **Discarded for now -- delta within noise but wrong direction.** |
 | E45 | 2026-02-16 | path_signatures | LOMO 0.3606 (best=A) | -- | -- | -- | -- | -- | -- | -- | -- | -- | **T32: Path signatures via esig.** A: E38 base 139 feats = 0.3606 (baseline). B: +sig depth-2 lead-lag 212 feats = 0.3479 (-0.013). C: +sig depth-3 no-LL 224 feats = 0.3463 (-0.014). D: +phys+sig crashed (duplicate columns). **Signatures hurt tree models -- feature dilution on small LOMO folds. Discarded.** |
 | E46 | 2026-02-16 | cwt_svm_stack | LOMO 0.3605 (best=5%SVM) | 0.371 | 0.518 | 0.050 | 0.374 | 0.421 | 0.859 | 0.145 | 0.469 | 0.038 | **T33: Zaugg CWT + SVM stacking.** SVM standalone LOMO=0.2493 (67 CWT feats). Tree LOMO=0.3597. Best blend 5%SVM: 0.3605 (+0.0008 = noise). SVM on CWT spectral features is much weaker than trees. No diversity gain. SKF=0.7619. **Discarded.** |
@@ -74,8 +74,17 @@ Track every experiment run. Add a row when you run something, even if it fails.
 | E65 | 2026-02-21 | blend_e54_e60_monthaware_stronger | **LB 0.54** | -- | -- | -- | -- | -- | -- | -- | -- | -- | **Stronger month-aware blend**: inject 20% of E60 on months 9/10. **Kaggle: 0.54 (worse).** Saved `e65_blend_e54_e60_m9_0.20_m10_0.20_20260221_2339.csv`. |
 | E66 | 2026-02-22 | gw_specialist_correction | LOMO 0.3608 | -- | -- | -- | -- | -- | -- | -- | -- | -- | **Learned Gulls↔Waders correction layer** (binary specialist \(s(x)=P(\text{Waders}\mid x)\); redistribute pair mass \(S=p_G+p_W\): \(p'_W=S\cdot s,\; p'_G=S\cdot(1-s)\)). Specialist AP=0.1449 and net **-0.0017 LOMO** vs E50 base. Submissions saved (not Kaggle-tested): `e66_gw_specialist_then_priors_20260222_0013.csv`, `e66_priors_then_gw_specialist_20260222_0013.csv`. |
 | E67 | 2026-02-22 | gatedpriors_margin | **LB 0.56** (tau=0.10/0.15) | -- | -- | -- | -- | -- | -- | -- | -- | -- | **Uncertainty-gated unseen-month priors (E54 alphas)**: apply GBIF prior tilt only when top-2 margin \(p_{top1}-p_{top2}<\\tau\). Kaggle: `tau=0.05` -> **0.55** (99 rows adjusted), `tau=0.10` -> **0.56** (190 rows), `tau=0.15` -> **0.56** (265 rows). Files: `e67_gatedpriors_tau0.05_20260222_0015.csv`, `...tau0.10...`, `...tau0.15...`. |
+| E70 | 2026-02-22 | bop_song_specialists_unseeninj | **LB 0.56** | -- | -- | -- | -- | -- | -- | -- | -- | -- | **Specialists-only use of E68 features.** Trained LGB binary specialists for BoP + Songbirds on the 12 E68 features (8 `enhanced_bio_shape` + 4 solar-derived). Applied *only on test unseen months* (2/5/12) with gates: base uncertainty (margin<0.25) + BoP requires thermal window, Songbirds requires dawn/dusk and specialist>base+Δ. Injection counts: BoP 3 (May), Songbirds 76 (Feb 12, Dec 64). Then apply E67 gated priors (tau=0.15). Saved `e70_unseeninj_bop0.35_song0.25_marg0.25_priors_tau0.15_0.3625_20260222_2257.csv`. **Kaggle: 0.56 (no improvement vs E54/E67 plateau).** |
+| E71 | 2026-02-23 | e52_plus_gated_priors | **LB 0.56** | -- | -- | -- | -- | -- | -- | -- | -- | -- | **Isolate shared-month bottleneck test.** Use `E52` month-aware blend (inject E42 into months 9/10 only; unseen months stay E50), then apply `E67` gated unseen-month priors (tau=0.15, E54 winter alphas). This changes *only* months 9/10 vs `e67_tau0.15` (1260/1872 rows changed; 71 top-1 label changes), while months 2/5/12 are identical. Saved `e71_e52_plus_gatedpriors_tau0.15_0.3904_20260223_1214.csv`. **Kaggle: 0.56 → shared-month blending does not break plateau.** |
+| E72 | 2026-02-23 | e52_conservative_plus_gated_priors | LB TBD | -- | -- | -- | -- | -- | -- | -- | -- | -- | **Conservative version of E71.** Rebuild `E52` conservative month-aware blend with weights `w9=0.60, w10=0.44` (20% shrink), then apply `E67` gated unseen-month priors (tau=0.15). Saved `e72_e52cons_w9_0.60_w10_0.44_plus_gatedpriors_tau0.15_0.3869_20260223_1217.csv`. |
+| E73 | 2026-02-23 | unseen_nb_physics_correction | **LB 0.58** | -- | -- | -- | -- | -- | -- | -- | -- | -- | **New unseen-month within-month correction (WINNER so far).** Start from `test_e50.npy`, apply E67 gated priors (tau=0.15; 265 rows), then apply a *Naive Bayes physics* product-of-experts using only `airspeed` + `radar_bird_size` (learned from train; Laplace=1.0; Gaussian speed per class; min σ=0.5). Apply only for unseen months (2/5/12) when margin<0.25 (451 rows). Compared to `e67_tau0.15`: 451 rows changed, 40 top-1 changes (Feb 18, May 6, Dec 16). Saved `e73_nbphys_unseen_tau0.25_g0.12_priortau0.15_20260223_1338.csv`. **Kaggle: 0.58 → confirms remaining headroom is within-unseen-month ranking, not month blending.** |
+| E74 | 2026-02-24 | nbphys_tuning | **LB 0.58** (A) | -- | -- | -- | -- | -- | -- | -- | -- | -- | **Tune E73 correction strength / coverage.** Same pipeline (E50 -> E67 gated priors tau=0.15 -> NB(size+airspeed) correction on unseen months only). Two variants generated: (A) `tau_nb=0.30, gamma=0.14` (560 rows gated; 44 top1 flips on unseen) scored **0.58** (no improvement vs E73). (B) `tau_nb=0.20, gamma=0.10` (355 rows; 37 flips) not Kaggle-tested yet. Files: `e74_nbphys_unseen_tau0.30_g0.14_priortau0.15_20260224_1522.csv`, `e74_nbphys_unseen_tau0.20_g0.10_priortau0.15_20260224_1522.csv`. |
+| E75 | 2026-02-24 | nbphys_altitude_correction | **LB 0.59** (A) | -- | -- | -- | -- | -- | -- | -- | -- | -- | **Extend NB correction with altitude cues (new best LB).** Same base pipeline (E50 -> E67 gated priors tau=0.15), then NB likelihood uses `radar_bird_size` + Gaussians for `(airspeed, alt_mid=(min_z+max_z)/2, alt_range=max_z-min_z)` on unseen months only with `tau_nb=0.30`. Candidate (A) `gamma=0.10` scored **0.59**. Candidate (B) `gamma=0.08` not Kaggle-tested yet. Files: `e75_nbalt_unseen_tau0.30_g0.10_priortau0.15_20260224_1529.csv`, `e75_nbalt_unseen_tau0.30_g0.08_priortau0.15_20260224_1529.csv`. |
+| E76 | 2026-02-24 | nbalt_tracklen_correction | **LB 0.58** (A) | -- | -- | -- | -- | -- | -- | -- | -- | -- | **Add track length evidence (FAILED).** Same pipeline as E75 (E50 -> E67 gated priors tau=0.15), then NB likelihood extends continuous factors with `n_pts=len(trajectory_time)` (and optional `duration=trajectory_time[-1]-trajectory_time[0]`). Unseen-month only, `tau_nb=0.30`. Candidate (A) feats=`n_pts`, `gamma=0.06` scored **0.58** (worse than E75=0.59), indicating track-length cues likely violate the invariance assumption \(P(u\\mid y)\\) across train→test. Candidate (B) feats=`duration+n_pts`, `gamma=0.08` not Kaggle-tested yet. Files: `e76_nbalt_npts_tau0.30_g0.06_priortau0.15_20260224_1542.csv`, `e76_nbalt_dur_npts_tau0.30_g0.08_priortau0.15_20260224_1542.csv`. |
+| E77 | 2026-02-24 | nbalt_month_gamma | **LB 0.58** | -- | -- | -- | -- | -- | -- | -- | -- | -- | **Targeted May tempering (FAILED).** Same as E75 but apply month-specific NB exponent: `gamma_m2=0.10, gamma_m5=0.06, gamma_m12=0.10` (tau_nb=0.30). This only changes **May** vs E75 (259 rows differ; 5 top-1 changes). **Kaggle: 0.58** → reducing May correction harmed; keep a single gamma for all unseen months for now. Saved `e77_nbalt_monthgamma_m2_0.10_m5_0.06_m12_0.10_tau0.30_20260224_1553.csv`. |
+| E78 | 2026-02-24 | nbalt_feature_weighting | LB TBD | -- | -- | -- | -- | -- | -- | -- | -- | -- | **Refine E75 without adding new evidence.** Keep same NB-alt evidence but downweight `alt_range` inside the likelihood to reduce redundancy / noise (altitude “double-counting”). Two candidates generated (tau_nb=0.30, gamma=0.10): (A) `w_alt_range=0.50` saved as `e78_nbalt_weighted_ws1.00_wv1.00_wm1.00_wr0.50_tau0.30_g0.10_20260224_1602.csv` (vs E75: 3 top-1 changes), (B) `w_alt_range=0.00` saved as `e78_nbalt_weighted_ws1.00_wv1.00_wm1.00_wr0.00_tau0.30_g0.10_20260224_1602.csv` (vs E75: 7 top-1 changes). |
 
-| E69 | 2026-02-22 | e42_with_priors | **LB 0.53** (Variant A) | -- | -- | -- | -- | -- | -- | -- | -- | -- | **Apply E54 winter_tilt priors to E42 base (LOMO 0.3799) instead of E50 (0.3625).** 4 variants: A=winter_tilt(m2=0.22,m5=0.12,m12=0.24), B=stronger_winter(m2=0.26,m5=0.12,m12=0.28), C=spring_tilt(m2=0.15,m5=0.28,m12=0.15), D=moderate(m2=0.20,m5=0.10,m12=0.22). **Key finding: E42+priors=0.53 < E50+priors=0.56 despite E42 having better LOMO. E50's AVONET/BirdWingData flight-prior features are the reason E50 responds better to GBIF priors. Binary specialists in E42 overfit to Sep/Oct patterns.** |
+| E69 | 2026-02-22 | e42_with_priors | **LB 0.53** (A winter_tilt) | -- | -- | -- | -- | -- | -- | -- | -- | -- | **Apply E54 winter_tilt priors to E42 base (LOMO 0.3799) instead of E50 (0.3625).** 4 variants: A=winter_tilt(m2=0.22,m5=0.12,m12=0.24), B=stronger_winter(m2=0.26,m5=0.12,m12=0.28), C=spring_tilt(m2=0.15,m5=0.28,m12=0.15), D=moderate(m2=0.20,m5=0.10,m12=0.22). **Note:** E69 uses convex mixing \((1-\\alpha)p+\\alpha\\pi_{GBIF}\) (not the Bayes ratio tilt used in E53–E55). Kaggle result indicates E42 does not benefit from unseen-month priors the way E50 does; likely base posterior structure differs in unseen months. |
 | E68 | 2026-02-22 | enhanced_features | LOMO 0.3452 | 0.355 | 0.446 | 0.069 | 0.316 | 0.404 | 0.854 | 0.122 | 0.495 | 0.047 | **New features: 8 enhanced bio-shape (turn_dir_consistency, max_sustained_turn_frac, rcs_dominant_ac_lag, rcs_flap_regularity, rcs_glide_flap_var_ratio, rcs_burst_fraction, path_loop_fraction, turn_reversal_rate) + 4 solar-derived (hours_from_solar_noon, is_thermal_window, is_dawn_dusk, is_afternoon_thermal) on E38 base.** CB multiclass alone=0.3556 (close to E38 base 0.3615), but LGB+XGB ensemble=0.3406 (hurt by new feats). After specialists: 0.3452. **Feature dilution: +12 feats to 151 total hurt ensemble. BoP +0.027, Songbirds +0.044 improved individually. Do NOT add these features to E42. Revert to E42 feature set.** |
 | E70 | 2026-02-23 | optuna_lomo_flight_priors | LOMO 0.3507 (0.3556 tuned-w) | 0.348 | 0.549 | 0.044 | 0.299 | 0.412 | 0.862 | 0.140 | 0.465 | 0.040 | **Optuna-tuned LGB + E48-C flight prior features (AVONET, no BirdWingData) + E54 priors.** 30 Optuna LOMO trials, best LGB params found. 170 features total. LGB(tuned)=0.3324, XGB=0.3346, CB=0.3605. Equal-weight ensemble=0.3507. Tuned-weight sweep (LGB=0.30, XGB=0.20, CB=0.50) → 0.3556. **Optuna hurt LGB (overfitting to train fold); CB defaults still dominant.** Ensemble=0.3507 worse than E50=0.3625. Variant C (tuned weights, winter_tilt) saved as `e70_tunedw_lgb0.3_xgb0.2_cb0.5_0.3556`. Submit Variant C (0.3556 + E54 priors) to test if tuned-weight base beats E54 on LB. |
 | E71 | 2026-02-23 | pergroup_gbif_priors | LOMO 0.3551 | 0.351 | 0.567 | 0.043 | 0.312 | 0.412 | 0.863 | 0.136 | 0.473 | 0.040 |**Fixed wing morphology + per-group GBIF alpha optimisation.** Two improvements vs E70: (1) BirdWingData absent → now uses hardcoded per-class wingspan/wing_area from literature (not global 0.70m/0.07m² default) → recovers wing_loading/aspect_ratio differentiation that E50 used. (2) Per-group alpha: alpha_rare (Waders/Ducks/Cormorants/Geese) tuned separately from alpha_common (Gulls/Songbirds/BoP/Pigeons/Clutter) via month-analog LOMO proxy (Feb→Jan, May→Apr, Dec→Oct). Grid: alpha_rare∈[0.1–0.5], alpha_common∈[0.0–0.20]. Ensemble CB=0.50/LGB=0.30/XGB=0.20, skip Optuna. 4 submissions: base, winter_tilt (E54 alphas), pergroup, pergroup_stronger. |
@@ -245,3 +254,67 @@ Soft pseudo-labeling adds unlabeled test samples back into training using model 
 ### Label-shift correction caveat
 
 Class-prior estimation methods based on inverting a confusion matrix (e.g., BBSE / EM label-shift corrections) can be numerically unstable when the matrix is ill-conditioned or when assumptions (\(p(x\mid y)\) invariant) are violated. In our setting, naïve implementations can collapse to a single class (Waders), so any such method needs strong regularization and careful validation.
+
+### Product-of-experts post-processing (E73–E77, LB ≥ 0.58)
+
+The key discovery after the 0.56 plateau is that **month-prior tilt alone is not enough**: it mainly re-ranks examples *across months*, but does not reliably correct *within-month* confusions on the unseen months \(\{2,5,12\}\).
+
+We therefore treat post-processing as **sequential Bayesian updates** of an existing posterior:
+
+1) **Base model** (learned from trajectory features + non-privileged tabular):
+\[
+p_{i} = f_\theta(x_i)\in \Delta^{K-1}.
+\]
+
+2) **Month prior (label-shift) correction** (E54/E67):
+\[
+p^{(m)}_{i,c}\propto p_{i,c}\cdot\Big(\frac{\pi_{\text{GBIF}}(c\mid m_i)}{\pi_{\text{train}}(c)}\Big)^{\alpha_{m_i}}
+\]
+optionally **uncertainty gated** by \(\mathbf{1}[\text{margin}_i<\tau]\).
+
+3) **Physics likelihood correction** (E73+): introduce per-sample “evidence” \(u_i\) consisting of stable physical cues, and apply a tempered product-of-experts update:
+\[
+q_{i,c}\propto p^{(m)}_{i,c}\cdot P(u_i\mid c)^{\gamma},
+\quad \gamma\in[0,1].
+\]
+
+The exponent \(\gamma\) is essential because (a) the NB independence assumption is false and (b) \(u\) is not conditionally independent of \(x\) (double-counting). \(\gamma\) acts as a *temperature / trust* parameter.
+
+#### Naive Bayes factorization used
+
+We approximate class-conditional evidence as:
+\[
+P(u\mid c)\approx P(\text{size}\mid c)\cdot \prod_{j} \mathcal{N}(u_j\mid \mu_{c,j},\sigma_{c,j}^2)
+\]
+with Laplace smoothing for `radar_bird_size` and diagonal Gaussians for continuous cues.
+
+Experiments:
+
+- **E73 / E74 (LB 0.58)**: \(u=(\text{radar\_bird\_size},\;\text{airspeed})\).
+- **E75 (LB 0.59, best)**: \(u=(\text{radar\_bird\_size},\;\text{airspeed},\;\text{alt\_mid},\;\text{alt\_range})\), where
+  - \(\text{alt\_mid}=(\text{min\_z}+\text{max\_z})/2\),
+  - \(\text{alt\_range}=\text{max\_z}-\text{min\_z}\).
+
+These improvements are consistent with the claim:
+> Remaining leaderboard headroom is dominated by **within-unseen-month ranking errors**, and stable physics cues provide extra information to re-rank those cases.
+
+#### Uncertainty gating for the evidence update
+
+To avoid perturbing confident predictions, we apply the \(P(u\mid c)^{\gamma}\) factor only when the base is uncertain:
+\[
+\text{margin}_i=p_{i,\text{top1}}-p_{i,\text{top2}},\qquad
+q_i=
+\begin{cases}
+p^{(m)}_i & \text{if }\text{margin}_i\ge \tau_{NB}\\
+\text{Renorm}\big(p^{(m)}_i\odot P(u_i\mid \cdot)^{\gamma}\big) & \text{if }\text{margin}_i< \tau_{NB}.
+\end{cases}
+\]
+
+This gate is what allows the evidence update to change **within-month rankings** without destroying already-correct confident rankings.
+
+#### When the invariance assumption breaks (E76, E77)
+
+The evidence update implicitly assumes that \(P(u\mid y)\) is approximately **domain-invariant** across train→test months.
+
+- **E76 (LB 0.58, worse than E75)** added `n_pts` / `duration` as evidence. These variables are strongly affected by the **tracking / segmentation process**, so \(P(u\mid y)\) is not stable across domains (violating the key assumption). The correction becomes mis-specified and hurts LB.
+- **E77 (LB 0.58)** tried month-specific \(\gamma_m\) by *reducing* May correction. The LB drop implies either (a) May still benefits from the same magnitude of physics correction, or (b) the public test May subset differs from our “May≈April” similarity assumption. For now, keep a single \(\gamma\) across unseen months.
