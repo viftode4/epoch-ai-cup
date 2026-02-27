@@ -1284,6 +1284,138 @@ def extract_enhanced_bio_shape_features(hex_str: str, traj_time_str: str) -> dic
         return defaults
 
 
+def extract_radar_physics_features(hex_str: str, traj_time_str: str) -> dict:
+    """Novel features derived from radar-bird physics first principles.
+
+    1. Detection gap rate: fraction of missed radar scans. Body size proxy
+       independent of RCS — smaller birds have lower detection probability.
+    2. Wing loading proxy: speed^2 / RCS_linear. High-wing-loading birds
+       (Cormorants, Pigeons) fly fast for their body size.
+    3. RCS-speed cross-correlation: how RCS changes relate to speed changes.
+       Encodes wing morphology (flapper vs glider).
+    4. 3D soaring score: simultaneous turning + climbing. BoP thermal signature.
+    5. Speed persistence: autocorrelation of speed. Pigeons are metronomic.
+    6. RCS-altitude coupling: correlation between RCS and altitude changes.
+    """
+    pts = parse_ewkb_4d(hex_str)
+    times = parse_trajectory_time(traj_time_str)
+    n = len(pts)
+
+    defaults = {
+        "rp_gap_fraction": 0.0,
+        "rp_max_gap_s": 0.0,
+        "rp_n_gaps": 0,
+        "rp_wing_loading_proxy": 0.0,
+        "rp_rcs_speed_corr": 0.0,
+        "rp_soaring_score": 0.0,
+        "rp_speed_persistence": 0.0,
+        "rp_rcs_alt_corr": 0.0,
+        "rp_power_proxy": 0.0,
+    }
+
+    if n < 4:
+        return defaults
+
+    lons = np.array([p[0] for p in pts])
+    lats = np.array([p[1] for p in pts])
+    alts = np.array([p[2] for p in pts])
+    rcs = np.array([p[3] for p in pts])
+
+    dt = np.diff(times)
+    dt = np.maximum(dt, 0.001)
+    median_dt = np.median(dt)
+
+    # --- 1. Detection gap features ---
+    # A "gap" is when dt > 1.5x the median step (missed scan)
+    gap_threshold = max(median_dt * 1.5, 1.5)
+    is_gap = dt > gap_threshold
+    gap_fraction = float(is_gap.mean())
+    max_gap = float(dt.max())
+    n_gaps = int(is_gap.sum())
+
+    # --- 2. Wing loading proxy ---
+    # Wing loading ∝ speed^2. RCS_linear ∝ body cross-section.
+    # speed^2 / RCS_linear should separate high-WL (Cormorants, Pigeons)
+    # from low-WL (Gulls, BoP soaring).
+    dists = np.array([haversine(lons[i], lats[i], lons[i+1], lats[i+1])
+                      for i in range(n-1)])
+    speeds = dists / dt
+    mean_speed = float(np.mean(speeds))
+    rcs_linear = 10.0 ** (np.mean(rcs) / 10.0)  # dBm2 → linear
+    wing_loading_proxy = mean_speed**2 / max(rcs_linear, 1e-10)
+
+    # --- 3. RCS-speed cross-correlation ---
+    # At each measurement, correlate RCS with instantaneous speed.
+    # Use midpoint RCS for each segment.
+    rcs_mid = 0.5 * (rcs[:-1] + rcs[1:])
+    if len(speeds) > 3 and np.std(speeds) > 1e-6 and np.std(rcs_mid) > 1e-6:
+        rcs_speed_corr = float(np.corrcoef(rcs_mid, speeds)[0, 1])
+        if not np.isfinite(rcs_speed_corr):
+            rcs_speed_corr = 0.0
+    else:
+        rcs_speed_corr = 0.0
+
+    # --- 4. 3D soaring score ---
+    # Fraction of track where bird is BOTH turning AND climbing.
+    if n > 3:
+        bearings = np.arctan2(np.diff(lats), np.diff(lons))
+        if len(bearings) > 1:
+            bearing_changes = np.abs(
+                np.arctan2(np.sin(np.diff(bearings)), np.cos(np.diff(bearings)))
+            )
+            alt_rates = np.diff(alts[:-1]) / dt[:-1]
+            # Soaring = high turning (> 0.1 rad/step) AND climbing (> 0.5 m/s)
+            min_len = min(len(bearing_changes), len(alt_rates))
+            is_soaring = (bearing_changes[:min_len] > 0.1) & (alt_rates[:min_len] > 0.5)
+            soaring_score = float(is_soaring.mean())
+        else:
+            soaring_score = 0.0
+    else:
+        soaring_score = 0.0
+
+    # --- 5. Speed persistence (lag-1 autocorrelation of speed) ---
+    if len(speeds) > 5 and np.std(speeds) > 1e-6:
+        sp_centered = speeds - np.mean(speeds)
+        sp_var = np.var(speeds)
+        speed_persistence = float(
+            np.mean(sp_centered[:-1] * sp_centered[1:]) / max(sp_var, 1e-10)
+        )
+        if not np.isfinite(speed_persistence):
+            speed_persistence = 0.0
+    else:
+        speed_persistence = 0.0
+
+    # --- 6. RCS-altitude coupling ---
+    if n > 3 and np.std(rcs) > 1e-6 and np.std(alts) > 1e-6:
+        rcs_alt_corr = float(np.corrcoef(rcs, alts)[0, 1])
+        if not np.isfinite(rcs_alt_corr):
+            rcs_alt_corr = 0.0
+    else:
+        rcs_alt_corr = 0.0
+
+    # --- 7. Flight power proxy ---
+    # Proportional to drag power: ∝ speed^3 for aerodynamic drag.
+    # Adjusted by climb rate for potential energy cost.
+    duration = times[-1] - times[0]
+    if duration > 0:
+        alt_gain = float(np.sum(np.maximum(np.diff(alts), 0)))
+        power_proxy = mean_speed**3 + 9.81 * alt_gain / max(duration, 1)
+    else:
+        power_proxy = 0.0
+
+    return {
+        "rp_gap_fraction": gap_fraction,
+        "rp_max_gap_s": max_gap,
+        "rp_n_gaps": n_gaps,
+        "rp_wing_loading_proxy": float(wing_loading_proxy),
+        "rp_rcs_speed_corr": rcs_speed_corr,
+        "rp_soaring_score": soaring_score,
+        "rp_speed_persistence": speed_persistence,
+        "rp_rcs_alt_corr": rcs_alt_corr,
+        "rp_power_proxy": power_proxy,
+    }
+
+
 def extract_linearity_features(hex_str: str, traj_time_str: str) -> dict:
     """Trajectory linearity features (E15/E16).
 
