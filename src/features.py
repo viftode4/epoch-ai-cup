@@ -22,6 +22,9 @@ ALL_TEMPORAL = [
 ]
 
 
+SIZE_MAP: dict[str, int] = {"Small bird": 0, "Medium bird": 1, "Large bird": 2, "Flock": 3}
+
+
 def haversine(lon1, lat1, lon2, lat2):
     """Haversine distance in meters."""
     R = 6371000
@@ -498,7 +501,7 @@ def add_tabular_features(df_feat: pd.DataFrame, df_orig: pd.DataFrame) -> pd.Dat
     df_feat["z_range"] = df_orig["max_z"].values - df_orig["min_z"].values
     df_feat["z_mean"] = (df_orig["max_z"].values + df_orig["min_z"].values) / 2
 
-    size_map = {"Small bird": 0, "Medium bird": 1, "Large bird": 2, "Flock": 3}
+    size_map = SIZE_MAP
     df_feat["radar_bird_size"] = df_orig["radar_bird_size"].map(size_map).values
 
     df_feat["airspeed_vs_ground"] = df_feat["airspeed"] / df_feat["avg_ground_speed"].clip(lower=0.01)
@@ -532,7 +535,7 @@ def add_targeted_features(df_feat: pd.DataFrame, df_orig: pd.DataFrame) -> pd.Da
     df_feat["hour_bin_3h"] = (hour // 3).astype(int)
 
     # Size one-hot (helps trees split cleanly)
-    size_map = {"Small bird": 0, "Medium bird": 1, "Large bird": 2, "Flock": 3}
+    size_map = SIZE_MAP
     size_val = df_orig["radar_bird_size"].map(size_map).values
     for name, val in [("small_bird", 0), ("medium", 1), ("large", 2), ("flock", 3)]:
         df_feat[f"is_{name}"] = (size_val == val).astype(int)
@@ -1535,7 +1538,7 @@ def add_weakclass_tabular(df_feat: pd.DataFrame, df_orig: pd.DataFrame) -> pd.Da
     month = ts.dt.month.values
     hour = ts.dt.hour.values
 
-    size_map = {"Small bird": 0, "Medium bird": 1, "Large bird": 2, "Flock": 3}
+    size_map = SIZE_MAP
     size_val = df_orig["radar_bird_size"].map(size_map).values
 
     # Migration timing (Geese, Waders peak Oct-Nov)
@@ -1661,7 +1664,7 @@ def build_features(df: pd.DataFrame, feature_sets: list[str] = None,
         feature_sets: list of feature sets to include.
             Options: "core", "rcs_fft", "wavelet", "flight_mode", "tabular",
                      "targeted", "zaugg_cwt", "weakclass", "flight_physics",
-                     "path_signature", "enhanced_bio_shape"
+                     "path_signature", "enhanced_bio_shape", "radar_physics"
             Default: ["core", "rcs_fft", "tabular"]
         sig_depth: signature truncation depth (2 or 3)
         sig_lead_lag: whether to use lead-lag augmentation for signatures
@@ -1678,6 +1681,7 @@ def build_features(df: pd.DataFrame, feature_sets: list[str] = None,
     use_abs_wb = "absolute_wingbeat" in feature_sets
     use_linearity = "linearity" in feature_sets
     use_enhanced = "enhanced_bio_shape" in feature_sets
+    use_radar_physics = "radar_physics" in feature_sets
 
     rows = []
     total = len(df)
@@ -1709,6 +1713,8 @@ def build_features(df: pd.DataFrame, feature_sets: list[str] = None,
             feats.update(extract_linearity_features(r.trajectory, r.trajectory_time))
         if use_enhanced:
             feats.update(extract_enhanced_bio_shape_features(r.trajectory, r.trajectory_time))
+        if use_radar_physics:
+            feats.update(extract_radar_physics_features(r.trajectory, r.trajectory_time))
         rows.append(feats)
     print(f"  Features: {total}/{total} done", flush=True)
 

@@ -121,6 +121,33 @@ Track every experiment run. Add a row when you run something, even if it fails.
 | E70 | 2026-02-23 | optuna_lomo_flight_priors | LOMO 0.3507 (0.3556 tuned-w) | 0.348 | 0.549 | 0.044 | 0.299 | 0.412 | 0.862 | 0.140 | 0.465 | 0.040 | **Optuna-tuned LGB + E48-C flight prior features (AVONET, no BirdWingData) + E54 priors.** 30 Optuna LOMO trials, best LGB params found. 170 features total. LGB(tuned)=0.3324, XGB=0.3346, CB=0.3605. Equal-weight ensemble=0.3507. Tuned-weight sweep (LGB=0.30, XGB=0.20, CB=0.50) → 0.3556. **Optuna hurt LGB (overfitting to train fold); CB defaults still dominant.** Ensemble=0.3507 worse than E50=0.3625. Variant C (tuned weights, winter_tilt) saved as `e70_tunedw_lgb0.3_xgb0.2_cb0.5_0.3556`. Submit Variant C (0.3556 + E54 priors) to test if tuned-weight base beats E54 on LB. |
 | E71 | 2026-02-23 | pergroup_gbif_priors | LOMO 0.3551 | 0.351 | 0.567 | 0.043 | 0.312 | 0.412 | 0.863 | 0.136 | 0.473 | 0.040 |**Fixed wing morphology + per-group GBIF alpha optimisation.** Two improvements vs E70: (1) BirdWingData absent → now uses hardcoded per-class wingspan/wing_area from literature (not global 0.70m/0.07m² default) → recovers wing_loading/aspect_ratio differentiation that E50 used. (2) Per-group alpha: alpha_rare (Waders/Ducks/Cormorants/Geese) tuned separately from alpha_common (Gulls/Songbirds/BoP/Pigeons/Clutter) via month-analog LOMO proxy (Feb→Jan, May→Apr, Dec→Oct). Grid: alpha_rare∈[0.1–0.5], alpha_common∈[0.0–0.20]. Ensemble CB=0.50/LGB=0.30/XGB=0.20, skip Optuna. 4 submissions: base, winter_tilt (E54 alphas), pergroup, pergroup_stronger. |
 
+## Validation Infrastructure (2026-03-01)
+
+**Problem**: Neither LOMO (corr~0.40 with LB) nor SKF (inflated) predicted LB well. Post-processing experiments required expensive Kaggle submissions to evaluate.
+
+**Solution**: Built IW-mAP validation with LB calibration in `src/validate.py`.
+
+### New files created:
+- `src/postprocessing.py` — Canonical 3-stage NB pipeline (priors -> evidence -> PoE). All PP experiments import from here.
+- `src/validate.py` — IW-mAP validation: temperature scaling + MLLS label shift + importance-weighted mAP + linear LB calibration. `eval_pp(fn)` returns calibrated LB estimate.
+- `experiments/e103_template.py` — Copy-and-edit template for PP experiments (~80-150 lines, zero boilerplate).
+- `experiments/calibrate.py` — Builds calibration curve from Kaggle submission LB scores via `kaggle` CLI.
+- `data/lb_calibration.csv` — Calibration data: 6 known (IW-mAP, LB) pairs used for fit, plus informational rows.
+
+### How calibration works:
+1. Fetched 50 Kaggle submissions via `kaggle competitions submissions ai-cup-2026-performance`
+2. Matched submission filenames to PP functions, ran `eval_pp` to compute IW-mAP for each
+3. Only **NB PP gamma sweep** variants differentiate in IW-mAP (GBIF-only priors all give ~0.6819)
+4. Linear fit on 6 NB-only points: `LB = 5.52 * IW-mAP - 3.17`, RMSE = 0.006
+5. CSV has `use_in_fit` column to exclude heading/shared/solar configs that map differently
+
+### Accuracy: ~0.01 of actual LB across known submissions.
+
+### Limitations:
+- IW-mAP differentiates NB evidence strength (gamma) but NOT GBIF prior strength
+- SKF OOF predictions for proxy months (Jan/Apr) are too confident for GBIF gating to fire
+- Only 6 calibration points; submitting gamma sweep configs (g=0.20, g=0.30) would tighten fit
+
 ## CRITICAL: Temporal Overfitting Discovery (2026-02-14)
 
 **ALL CV scores in E01-E23 are inflated** due to temporal feature overfitting.

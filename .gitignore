@@ -229,3 +229,7 @@ submission.csv
 
 # Windows artifact
 nul
+
+# Generated prediction artifacts (OOF and test .npy files, output logs)
+*.npy
+*_output.txt

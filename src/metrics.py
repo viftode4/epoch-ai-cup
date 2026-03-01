@@ -46,11 +46,7 @@ def bootstrap_map_ci(y_true, y_pred, n_bootstrap=1000, ci=0.95, seed=42):
     per_class_maps = {cls: [] for cls in CLASSES}
     for _ in range(n_bootstrap):
         idx = rng.choice(n, size=n, replace=True)
-        # Skip if any class is missing from bootstrap sample
-        if len(np.unique(y_true[idx])) < len(CLASSES):
-            m, per = compute_map(y_true[idx], y_pred[idx])
-        else:
-            m, per = compute_map(y_true[idx], y_pred[idx])
+        m, per = compute_map(y_true[idx], y_pred[idx])
         maps.append(m)
         for cls, ap in per.items():
             per_class_maps[cls].append(ap)
