@@ -1,0 +1,341 @@
+"""E114: Domain-Adversarial Sequence Network (DANN) on Raw Trajectories.
+
+Mathematical Motivation:
+1. Deep research highlights "bounding flight" (periodic alteration between flapping and bounding)
+   as the primary biomechanical signature at 1Hz, visible in speed and vertical displacement modulations.
+2. Previous sequence models (1D-CNN, MiniRocket) failed because they memorized the seasonal
+   domain shift (e.g., wind speed, absolute ground speed) instead of the invariant flight rhythm.
+3. We use a Domain-Adversarial Neural Network (DANN) to force the feature extractor to learn
+   representations that are predictive of the bird class but INVARIANT to the month.
+4. Input: (dx/dt, dy/dt, dz/dt, dRCS/dt). Using derivatives removes absolute spatial bias.
+5. We combine the sequence embedding with our pruned tabular features to give the network
+   the best of both worlds (rhythm + morphology).
+"""
+
+import sys
+import warnings
+from pathlib import Path
+
+import numpy as np
+import pandas as pd
+import torch
+import torch.nn as nn
+import torch.optim as optim
+from torch.utils.data import DataLoader, TensorDataset
+from sklearn.preprocessing import StandardScaler
+
+warnings.filterwarnings("ignore")
+
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+from src.data import CLASSES, load_test, load_train, parse_ewkb_4d, parse_trajectory_time
+from src.features import ALL_TEMPORAL, build_features
+from src.metrics import compute_map
+from src.submission import save_submission
+from experiments.e96_nbalt_heading_ac1 import (
+    BASE_ALPHA, TAU_PRIOR, TAU_NB, GAMMA,
+    build_gbif_priors, apply_gated_ratio_priors, extract_heading_ac1,
+    build_nb_params, compute_log_p_u_given_c, apply_nb_poe, renorm_rows, top2_margin
+)
+
+ROOT = Path(__file__).resolve().parent.parent
+N_CLASSES = len(CLASSES)
+SEQ_LEN = 64
+SEED = 42
+UNSEEN_MONTHS = (2, 5, 12)
+
+def set_seed(seed):
+    np.random.seed(seed)
+    torch.manual_seed(seed)
+    if torch.cuda.is_available():
+        torch.cuda.manual_seed_all(seed)
+
+set_seed(SEED)
+
+# E79 Pruned Features
+PRUNED_FEATURES = [
+    'airspeed', 'radar_bird_size', 'min_z', 'max_z', 'duration', 'track_length',
+    'z_mean', 'z_std', 'rcs_mean', 'rcs_std', 'rcs_max', 'rcs_min',
+    'speed_mean', 'speed_std', 'speed_max', 'speed_min', 'accel_mean', 'accel_std',
+    'accel_max', 'accel_min', 'turn_mean', 'turn_std', 'turn_max', 'turn_min',
+    'sinuosity', 'rcs_range', 'rcs_q25', 'rcs_q75', 'rcs_iqr', 'rcs_skew', 'rcs_kurtosis',
+    'rcs_trend', 'rcs_p2p', 'rcs_smoothness', 'rcs_ac1', 'rcs_ac2'
+]
+
+def extract_sequences(df: pd.DataFrame) -> np.ndarray:
+    """Extract (N, 4, SEQ_LEN) sequences: dx/dt, dy/dt, dz/dt, dRCS/dt."""
+    n = len(df)
+    seqs = np.zeros((n, 4, SEQ_LEN), dtype=np.float32)
+    
+    for i, row in df.iterrows():
+        try:
+            pts = parse_ewkb_4d(row["trajectory"])
+            times = parse_trajectory_time(row["trajectory_time"])
+            if len(pts) < 2:
+                continue
+                
+            lons = np.array([p[0] for p in pts])
+            lats = np.array([p[1] for p in pts])
+            alts = np.array([p[2] for p in pts])
+            rcs = np.array([p[3] for p in pts])
+            
+            dt = np.diff(times)
+            dt = np.maximum(dt, 0.1)  # prevent div by zero
+            
+            mean_lat = np.mean(lats)
+            lon_scale = 111000.0 * np.cos(np.deg2rad(mean_lat))
+            
+            dx = np.diff(lons) * lon_scale / dt
+            dy = np.diff(lats) * 111000.0 / dt
+            dz = np.diff(alts) / dt
+            drcs = np.diff(rcs) / dt
+            
+            L = min(len(dx), SEQ_LEN)
+            seqs[i, 0, :L] = dx[:L]
+            seqs[i, 1, :L] = dy[:L]
+            seqs[i, 2, :L] = dz[:L]
+            seqs[i, 3, :L] = drcs[:L]
+        except Exception:
+            pass
+            
+    # Standardize each channel globally
+    for c in range(4):
+        std = np.std(seqs[:, c, :])
+        if std > 1e-6:
+            seqs[:, c, :] /= std
+            
+    return seqs
+
+# --- DANN Architecture ---
+from torch.autograd import Function
+
+class GradientReversal(Function):
+    @staticmethod
+    def forward(ctx, x, alpha):
+        ctx.alpha = alpha
+        return x.view_as(x)
+
+    @staticmethod
+    def backward(ctx, grad_output):
+        return grad_output.neg() * ctx.alpha, None
+
+def grad_reverse(x, alpha=1.0):
+    return GradientReversal.apply(x, alpha)
+
+class DANN(nn.Module):
+    def __init__(self, tab_dim):
+        super().__init__()
+        # Sequence Extractor
+        self.seq_extractor = nn.Sequential(
+            nn.Conv1d(4, 32, kernel_size=3, padding=1),
+            nn.BatchNorm1d(32),
+            nn.ReLU(),
+            nn.MaxPool1d(2),
+            nn.Conv1d(32, 64, kernel_size=3, padding=1),
+            nn.BatchNorm1d(64),
+            nn.ReLU(),
+            nn.AdaptiveMaxPool1d(1)
+        )
+        
+        # Tabular Extractor
+        self.tab_extractor = nn.Sequential(
+            nn.Linear(tab_dim, 64),
+            nn.BatchNorm1d(64),
+            nn.ReLU(),
+            nn.Dropout(0.3)
+        )
+        
+        # Class Predictor
+        self.class_classifier = nn.Sequential(
+            nn.Linear(64 + 64, 64),
+            nn.BatchNorm1d(64),
+            nn.ReLU(),
+            nn.Dropout(0.3),
+            nn.Linear(64, N_CLASSES)
+        )
+        
+        # Domain Predictor (Train vs Test)
+        self.domain_classifier = nn.Sequential(
+            nn.Linear(64 + 64, 64),
+            nn.BatchNorm1d(64),
+            nn.ReLU(),
+            nn.Dropout(0.3),
+            nn.Linear(64, 2)
+        )
+        
+    def forward(self, x_seq, x_tab, alpha=1.0):
+        seq_emb = self.seq_extractor(x_seq).squeeze(-1)
+        tab_emb = self.tab_extractor(x_tab)
+        
+        emb = torch.cat([seq_emb, tab_emb], dim=1)
+        
+        class_preds = self.class_classifier(emb)
+        
+        rev_emb = grad_reverse(emb, alpha)
+        domain_preds = self.domain_classifier(rev_emb)
+        
+        return class_preds, domain_preds
+
+def main() -> None:
+    print("=" * 70, flush=True)
+    print("E114 DOMAIN-ADVERSARIAL SEQUENCE NETWORK (DANN)".center(70), flush=True)
+    print("=" * 70, flush=True)
+
+    train_df = load_train()
+    test_df = load_test()
+
+    y = pd.Categorical(train_df["bird_group"], categories=CLASSES).codes.astype(int)
+    train_months = pd.to_datetime(train_df["timestamp_start_radar_utc"]).dt.month.values
+    test_months = pd.to_datetime(test_df["timestamp_start_radar_utc"]).dt.month.values
+
+    # 1. Build Tabular Features
+    print("\nBuilding tabular features...", flush=True)
+    feature_sets = ["core", "tabular", "rcs_fft"]
+    Xtr_base = build_features(train_df, feature_sets=feature_sets)
+    Xte_base = build_features(test_df, feature_sets=feature_sets)
+    
+    keep_cols = [c for c in PRUNED_FEATURES if c in Xtr_base.columns]
+    Xtr_df = Xtr_base[keep_cols].replace([np.inf, -np.inf], np.nan).fillna(0.0)
+    Xte_df = Xte_base[keep_cols].replace([np.inf, -np.inf], np.nan).fillna(0.0)
+    
+    if 'radar_bird_size' in Xtr_df.columns and Xtr_df['radar_bird_size'].dtype == 'object':
+        Xtr_df = pd.get_dummies(Xtr_df, columns=['radar_bird_size'])
+        Xte_df = pd.get_dummies(Xte_df, columns=['radar_bird_size'])
+        # Align columns
+        for c in Xtr_df.columns:
+            if c not in Xte_df.columns:
+                Xte_df[c] = 0
+        Xte_df = Xte_df[Xtr_df.columns]
+
+    scaler = StandardScaler()
+    Xtr_tab = scaler.fit_transform(Xtr_df.to_numpy(dtype=np.float32))
+    Xte_tab = scaler.transform(Xte_df.to_numpy(dtype=np.float32))
+
+    # 2. Extract Sequences
+    print("Extracting sequences...", flush=True)
+    Xtr_seq = extract_sequences(train_df)
+    Xte_seq = extract_sequences(test_df)
+
+    # 3. Train DANN
+    print("\nTraining DANN...", flush=True)
+    device = torch.device("cpu")
+    if torch.backends.mps.is_available():
+        device = torch.device("mps")
+        
+    model = DANN(tab_dim=Xtr_tab.shape[1]).to(device)
+    
+    # Class weights
+    counts = np.bincount(y, minlength=N_CLASSES).astype(np.float32)
+    w_class = len(y) / (N_CLASSES * np.maximum(counts, 1.0))
+    criterion_class = nn.CrossEntropyLoss(weight=torch.tensor(w_class).to(device))
+    criterion_domain = nn.CrossEntropyLoss()
+    
+    optimizer = optim.AdamW(model.parameters(), lr=0.001, weight_decay=1e-4)
+    
+    # DataLoaders
+    tr_ds = TensorDataset(torch.tensor(Xtr_seq), torch.tensor(Xtr_tab), torch.tensor(y, dtype=torch.long))
+    tr_loader = DataLoader(tr_ds, batch_size=64, shuffle=True, drop_last=True)
+    
+    te_ds = TensorDataset(torch.tensor(Xte_seq), torch.tensor(Xte_tab))
+    te_loader = DataLoader(te_ds, batch_size=64, shuffle=True, drop_last=True)
+    
+    epochs = 40
+    for epoch in range(epochs):
+        model.train()
+        te_iter = iter(te_loader)
+        
+        # Alpha scheduling (gradually increase domain penalty)
+        p = float(epoch) / epochs
+        alpha = 2. / (1. + np.exp(-10 * p)) - 1
+        
+        epoch_loss_c = 0.0
+        epoch_loss_d = 0.0
+        
+        for seq_s, tab_s, y_s in tr_loader:
+            try:
+                seq_t, tab_t = next(te_iter)
+            except StopIteration:
+                te_iter = iter(te_loader)
+                seq_t, tab_t = next(te_iter)
+                
+            seq_s, tab_s, y_s = seq_s.to(device), tab_s.to(device), y_s.to(device)
+            seq_t, tab_t = seq_t.to(device), tab_t.to(device)
+            
+            optimizer.zero_grad()
+            
+            # Source forward
+            class_preds_s, domain_preds_s = model(seq_s, tab_s, alpha=alpha)
+            loss_c = criterion_class(class_preds_s, y_s)
+            
+            # Domain labels: 0 for source, 1 for target
+            domain_y_s = torch.zeros(len(seq_s), dtype=torch.long).to(device)
+            loss_d_s = criterion_domain(domain_preds_s, domain_y_s)
+            
+            # Target forward
+            _, domain_preds_t = model(seq_t, tab_t, alpha=alpha)
+            domain_y_t = torch.ones(len(seq_t), dtype=torch.long).to(device)
+            loss_d_t = criterion_domain(domain_preds_t, domain_y_t)
+            
+            loss_d = 0.5 * (loss_d_s + loss_d_t)
+            
+            # Total loss
+            loss = loss_c + loss_d
+            loss.backward()
+            optimizer.step()
+            
+            epoch_loss_c += loss_c.item()
+            epoch_loss_d += loss_d.item()
+            
+        if (epoch+1) % 10 == 0:
+            print(f"Epoch {epoch+1}/{epochs} | Class Loss: {epoch_loss_c/len(tr_loader):.4f} | Domain Loss: {epoch_loss_d/len(tr_loader):.4f}", flush=True)
+
+    # 4. Predict on Test
+    print("\nPredicting on Test...", flush=True)
+    model.eval()
+    test_ds_full = TensorDataset(torch.tensor(Xte_seq), torch.tensor(Xte_tab))
+    test_loader_full = DataLoader(test_ds_full, batch_size=128, shuffle=False)
+    
+    P_test = []
+    with torch.no_grad():
+        for seq_t, tab_t in test_loader_full:
+            seq_t, tab_t = seq_t.to(device), tab_t.to(device)
+            class_preds, _ = model(seq_t, tab_t, alpha=0.0)
+            probs = torch.softmax(class_preds, dim=1).cpu().numpy()
+            P_test.append(probs)
+            
+    P_test = np.vstack(P_test)
+    P_test = renorm_rows(P_test)
+    
+    save_submission(P_test, "e114_dann_raw", cv_map=None)
+
+    # 5. Apply E96 Post-Processing
+    print("\nApplying E96 Unseen-Month Post-Processing...", flush=True)
+    counts = np.bincount(y, minlength=N_CLASSES).astype(float)
+    p_train = counts / counts.sum()
+    priors = build_gbif_priors(p_train)
+
+    train_heading, train_ac1, train_ok = extract_heading_ac1(train_df)
+    test_heading, test_ac1, test_ok = extract_heading_ac1(test_df)
+
+    test_p0, changed = apply_gated_ratio_priors(
+        P_test, test_months, p_train, priors, BASE_ALPHA, tau=TAU_PRIOR
+    )
+    
+    margin0 = top2_margin(test_p0)
+    gate = np.isin(test_months, UNSEEN_MONTHS) & (margin0 < TAU_NB)
+    
+    size_levels, log_p_size, mu, sig = build_nb_params(
+        train_df, y, train_heading, train_ac1, train_ok, use_heading=True, use_ac1=True
+    )
+    loglike_test = compute_log_p_u_given_c(
+        test_df, size_levels, log_p_size, mu, sig, test_heading, test_ac1, test_ok, use_heading=True, use_ac1=True
+    )
+    
+    P_final = apply_nb_poe(test_p0, loglike_test, gamma=GAMMA, gate=gate)
+    
+    name = f"e114_dann_pp_heading_ac1_tau{TAU_NB:.2f}_g{GAMMA:.2f}_priortau{TAU_PRIOR:.2f}"
+    save_submission(P_final, name, cv_map=None)
+    
+    print("\nDone.", flush=True)
+
+if __name__ == "__main__":
+    main()
