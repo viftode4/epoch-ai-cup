@@ -64,13 +64,17 @@ def extract_core_features(hex_str: str, traj_time_str: str) -> dict:
     descending = alt_diffs[alt_diffs < 0]
 
     if n > 2:
-        bearings = np.arctan2(np.diff(lats), np.diff(lons))
+        bearings = np.arctan2(np.diff(lats) * 111000.0, np.diff(lons) * 67000.0)
         bearing_changes = np.arctan2(np.sin(np.diff(bearings)), np.cos(np.diff(bearings)))
     else:
         bearing_changes = np.array([0.0])
 
-    # Acceleration
-    accel = np.diff(speeds) / np.maximum(dt[:-1], 0.001) if len(speeds) > 1 and len(dt) > 1 else np.array([0.0])
+    # Acceleration (use midpoint time between segments)
+    if len(speeds) > 1 and len(dt) > 1:
+        dt_mid = 0.5 * (dt[:-1] + dt[1:]) if len(dt) > 1 else dt[:1]
+        accel = np.diff(speeds) / np.maximum(dt_mid, 0.001)
+    else:
+        accel = np.array([0.0])
 
     # Halves
     mid = n // 2
@@ -415,7 +419,7 @@ def extract_flight_mode_features(hex_str: str, traj_time_str: str) -> dict:
 
         # === Direction autocorrelation ===
         if n > 2:
-            bearings = np.arctan2(np.diff(lats), np.diff(lons))
+            bearings = np.arctan2(np.diff(lats) * 111000.0, np.diff(lons) * 67000.0)
             cos_bearings = np.cos(bearings)
 
             def autocorr_at_lag(x, lag):
@@ -690,7 +694,7 @@ def extract_weakclass_features(hex_str: str, traj_time_str: str) -> dict:
 
         # Turn angle statistics
         if n > 2:
-            bearings = np.arctan2(np.diff(lats), np.diff(lons))
+            bearings = np.arctan2(np.diff(lats) * 111000.0, np.diff(lons) * 67000.0)
             turn_angles = np.abs(np.arctan2(np.sin(np.diff(bearings)),
                                              np.cos(np.diff(bearings))))
             turn_var = np.var(turn_angles)
@@ -811,7 +815,7 @@ def extract_flight_physics_features(hex_str: str, traj_time_str: str) -> dict:
         alt_rate = np.diff(alts) / dt  # m/s vertical
 
         if n > 2:
-            bearings = np.arctan2(np.diff(lats), np.diff(lons))
+            bearings = np.arctan2(np.diff(lats) * 111000.0, np.diff(lons) * 67000.0)
             bearing_changes = np.abs(np.arctan2(
                 np.sin(np.diff(bearings)), np.cos(np.diff(bearings))))
         else:
@@ -1179,7 +1183,7 @@ def extract_enhanced_bio_shape_features(hex_str: str, traj_time_str: str) -> dic
 
         # ── 1. Turn direction consistency ──────────────────────────────
         if n > 3:
-            bearings = np.arctan2(np.diff(lats), np.diff(lons))
+            bearings = np.arctan2(np.diff(lats) * 111000.0, np.diff(lons) * 67000.0)
             b_changes = np.arctan2(np.sin(np.diff(bearings)),
                                    np.cos(np.diff(bearings)))
             total_turn = np.sum(np.abs(b_changes))
@@ -1287,6 +1291,37 @@ def extract_enhanced_bio_shape_features(hex_str: str, traj_time_str: str) -> dic
         return defaults
 
 
+def extract_rcs_slope(hex_str: str, traj_time_str: str) -> dict:
+    """Linear regression slope of RCS (dBm2) over normalised time [0,1].
+
+    Separates species by how their radar cross-section changes during a track:
+      Clutter: +1.5 dB (RCS increases as object approaches)
+      Cormorants: +0.9 dB (large body, steady approach)
+      Ducks: -2.0 dB (RCS decreases -- departing / altitude change)
+      Others: ~flat
+
+    Returns:
+        rcs_slope: slope in dB per normalised time unit
+    """
+    from scipy.stats import linregress
+
+    pts = parse_ewkb_4d(hex_str)
+    times = parse_trajectory_time(traj_time_str)
+    if len(pts) < 4:
+        return {"rcs_slope": 0.0}
+    try:
+        rcs = np.array([p[3] for p in pts], dtype=float)
+        t = np.array(times, dtype=float)
+        duration = t[-1] - t[0]
+        if duration < 0.1:
+            return {"rcs_slope": 0.0}
+        t_norm = (t - t[0]) / duration  # normalise to [0, 1]
+        slope = linregress(t_norm, rcs).slope
+        return {"rcs_slope": float(slope) if np.isfinite(slope) else 0.0}
+    except Exception:
+        return {"rcs_slope": 0.0}
+
+
 def extract_radar_physics_features(hex_str: str, traj_time_str: str) -> dict:
     """Novel features derived from radar-bird physics first principles.
 
@@ -1361,7 +1396,7 @@ def extract_radar_physics_features(hex_str: str, traj_time_str: str) -> dict:
     # --- 4. 3D soaring score ---
     # Fraction of track where bird is BOTH turning AND climbing.
     if n > 3:
-        bearings = np.arctan2(np.diff(lats), np.diff(lons))
+        bearings = np.arctan2(np.diff(lats) * 111000.0, np.diff(lons) * 67000.0)
         if len(bearings) > 1:
             bearing_changes = np.abs(
                 np.arctan2(np.sin(np.diff(bearings)), np.cos(np.diff(bearings)))
@@ -1502,7 +1537,7 @@ def extract_path_signature_features(hex_str: str, traj_time_str: str,
 
         # Channel 4: cumulative bearing change (normalized)
         if n > 2:
-            bearings = np.arctan2(np.diff(lats), np.diff(lons))
+            bearings = np.arctan2(np.diff(lats) * 111000.0, np.diff(lons) * 67000.0)
             b_changes = np.arctan2(np.sin(np.diff(bearings)), np.cos(np.diff(bearings)))
             cum_bearing = np.concatenate([[0, 0], np.cumsum(b_changes)])
             max_b = np.max(np.abs(cum_bearing)) if np.max(np.abs(cum_bearing)) > 1e-10 else 1.0
@@ -1664,7 +1699,8 @@ def build_features(df: pd.DataFrame, feature_sets: list[str] = None,
         feature_sets: list of feature sets to include.
             Options: "core", "rcs_fft", "wavelet", "flight_mode", "tabular",
                      "targeted", "zaugg_cwt", "weakclass", "flight_physics",
-                     "path_signature", "enhanced_bio_shape", "radar_physics"
+                     "path_signature", "enhanced_bio_shape", "radar_physics",
+                     "rcs_slope"
             Default: ["core", "rcs_fft", "tabular"]
         sig_depth: signature truncation depth (2 or 3)
         sig_lead_lag: whether to use lead-lag augmentation for signatures
@@ -1682,6 +1718,7 @@ def build_features(df: pd.DataFrame, feature_sets: list[str] = None,
     use_linearity = "linearity" in feature_sets
     use_enhanced = "enhanced_bio_shape" in feature_sets
     use_radar_physics = "radar_physics" in feature_sets
+    use_rcs_slope = "rcs_slope" in feature_sets
 
     rows = []
     total = len(df)
@@ -1715,6 +1752,8 @@ def build_features(df: pd.DataFrame, feature_sets: list[str] = None,
             feats.update(extract_enhanced_bio_shape_features(r.trajectory, r.trajectory_time))
         if use_radar_physics:
             feats.update(extract_radar_physics_features(r.trajectory, r.trajectory_time))
+        if use_rcs_slope:
+            feats.update(extract_rcs_slope(r.trajectory, r.trajectory_time))
         rows.append(feats)
     print(f"  Features: {total}/{total} done", flush=True)
 
