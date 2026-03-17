@@ -1,0 +1,13 @@
+{
+  "id": "vladiftode/e157-multirocket-lgb",
+  "title": "E157 MultiRocket LGB",
+  "code_file": "e157_kaggle.py",
+  "language": "python",
+  "kernel_type": "script",
+  "is_private": true,
+  "enable_gpu": true,
+  "enable_internet": true,
+  "dataset_sources": ["vladiftode/epoch-src"],
+  "competition_sources": ["ai-cup-2026-performance"],
+  "kernel_sources": []
+}

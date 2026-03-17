@@ -1,0 +1,13 @@
+{
+  "id": "vladiftode/e158-cnn-masked-pad",
+  "title": "E158 CNN Masked Pad",
+  "code_file": "e158_kaggle.py",
+  "language": "python",
+  "kernel_type": "script",
+  "is_private": true,
+  "enable_gpu": true,
+  "enable_internet": false,
+  "dataset_sources": ["vladiftode/epoch-src"],
+  "competition_sources": ["ai-cup-2026-performance"],
+  "kernel_sources": []
+}

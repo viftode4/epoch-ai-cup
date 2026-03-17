@@ -1,0 +1,13 @@
+{
+  "id": "vladiftode/e169-deepsets-attention-pooling-tree-blend",
+  "title": "E169 DeepSets Attention-Pooling + Tree Blend",
+  "code_file": "e169_kaggle.py",
+  "language": "python",
+  "kernel_type": "script",
+  "is_private": true,
+  "enable_gpu": true,
+  "enable_internet": false,
+  "dataset_sources": ["vladiftode/epoch-src"],
+  "competition_sources": ["ai-cup-2026-performance"],
+  "kernel_sources": []
+}

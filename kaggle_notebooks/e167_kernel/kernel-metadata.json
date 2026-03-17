@@ -1,0 +1,13 @@
+{
+  "id": "vladiftode/e167-bugfix-temporal-dynamics",
+  "title": "E167 Bugfix + Temporal Dynamics",
+  "code_file": "e167_kaggle.py",
+  "language": "python",
+  "kernel_type": "script",
+  "is_private": true,
+  "enable_gpu": true,
+  "enable_internet": false,
+  "dataset_sources": ["vladiftode/epoch-src"],
+  "competition_sources": ["ai-cup-2026-performance"],
+  "kernel_sources": []
+}
