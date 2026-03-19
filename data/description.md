@@ -17,7 +17,7 @@ Then, train_data.csv also includes observation-based columns used to validate th
 
 observation_id — The unique identifier of each observation
 primary_observation_id — The unique identifier of each unique observation. (The same bird (flock) can consist of multiple radar tracks)
-observer_position — The location of the observer encoded in EWKB (Extended Well-Known Binary) Hex as Longitude / Latitude / Altitude
+observer_position — The most recent bird position in the radar track when the observer clicked the button to enter the species label, encoded in EWKB (Extended Well-Known Binary) Hex as Longitude / Latitude / Altitude. (Originally mislabeled as "observer location" — corrected 2026-03-19.)
 observer_comment — A comment left by the observer regarding the observation
 n_birds_observed — The amount of birds observed
 bird_group — The bird group of the radar track

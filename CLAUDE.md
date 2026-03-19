@@ -8,7 +8,24 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - **Task:** Classify bird species from radar tracks → 9 classes
 - **Metric:** Macro-averaged mAP (mean Average Precision) over all 9 classes, sklearn implementation
 - **Submission:** CSV with `track_id` + 9 probability columns (floats 0–1)
-- **Deadline:** March 19, 2026
+- **Deadline:** March 24, 2026 (extended from original March 19)
+
+## Domain Knowledge Requirement
+
+**Before implementing ANY new feature, model change, or post-processing experiment:**
+1. Check the memory files in `~/.claude/projects/.../memory/` — especially `project_class_deep_research.md`, `project_key_learnings.md`, and `project_new_features.md`
+2. Verify the idea hasn't already been tried and failed (see `project_key_learnings.md` DO NOT RETRY list)
+3. Confirm any domain assumption against `project_radar_physics.md` and `project_species_signatures.md`
+4. For new external data: check `project_external_data.md` for verified sources with URLs
+5. For confusion pairs: check `project_confusion_thresholds.md` for quantitative thresholds
+
+**Key domain facts that MUST be respected:**
+- Robin Radar MAX samples at exactly 1 Hz — wingbeat frequencies are unresolvable
+- "Airspeed" column is ground speed (wind-contaminated)
+- 19/36 best features are month-sensitive (not just 11 weather/solar)
+- Every class has within-class month heterogeneity (different species/behaviors per month)
+- Tidal data (Rijkswaterstaat) is the #1 unexploited signal for Gulls vs Waders
+- Detection bias: small birds under-detected at range — dataset composition is biased
 
 ## Rules
 
@@ -46,7 +63,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ### Train-only (privileged)
 - `bird_group` — **target label**
 - `bird_species` — fine-grained species
-- `observation_id`, `primary_observation_id`, `observer_position`, `observer_comment`, `n_birds_observed`
+- `observation_id`, `primary_observation_id`, `observer_position` (bird's position at labeling time, NOT observer location — corrected 2026-03-19), `observer_comment`, `n_birds_observed`
 
 ### Class Distribution
 | Class | N | % | Best AP (v2) | Key signal |
@@ -69,7 +86,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - **E75/E96**: E50 base + NB PoE post-processing (GBIF priors + physics evidence), LB 0.59.
 - Post-processing adds ~0.03 LB over raw on E50 base, but E79 matches without PP.
 
-See `EXPERIMENTS.md` for full history (E01-E102+). See `RESEARCH.md` for paper references.
+See `EXPERIMENTS.md` for full history (E01-E165). See `RESEARCH.md` for paper references.
 
 ## Repo Structure (updated)
 
@@ -135,3 +152,22 @@ Template: `experiments/e103_template.py` — copy, rename, edit the starred sect
 1. Submit gamma sweep configs (g=0.20, g=0.30) to Kaggle to tighten LB calibration
 2. Explore stronger evidence channels that maintain P(u|y) invariance across months
 3. Better base model (architecture changes, not just PP)
+
+## Domain Caveats (verified 2026-03-19)
+
+### Radar & Sensor
+- **Sampling rate:** Robin Radar MAX = exactly 1 Hz (60 RPM). All wingbeat frequencies are sub-Nyquist; only aliased modulation features (RCS variance, autocorrelation) are usable.
+- **`airspeed` column:** Likely ground-speed from radar (Doppler or track displacement), NOT true airspeed. Wind contamination adds seasonal variance.
+
+### Feature Issues
+- **RCS on dB scale:** ~30-35 features compute statistics (mean, std, correlations) on dB values. dB is logarithmic; arithmetic stats are physically incorrect. `rcs_per_alt` mixes dB with meters. Consider linear-scale RCS features.
+- **Weather/solar leakage:** 11 of E79's 36 pruned features are weather/solar (`sol_*`, `wx_*`), acting as month proxies. Removing them drops SKF from 0.7736 to 0.6821 (E164), so they carry real signal despite leaking.
+
+### CV & Validation
+- **`primary_observation_id` not grouped:** Same bird can appear in train+val folds. Use `GroupKFold`/`StratifiedGroupKFold` to prevent same-bird leakage.
+- **NB evidence month-stability assumption:** P(u|y) for speed, altitude, heading varies by season. Only RCS modulation patterns and wingbeat-derived features are truly invariant.
+
+### Bird Biology Reference
+- **Flight modes:** Continuous flapping (Waders, Pigeons, Cormorants, Geese), Flap-gliding (Gulls, some Ducks), Bounding (primarily Songbirds <300g), Soaring (Birds of Prey)
+- **Glide ratios:** BoP 10-20:1, Gulls 8-12:1, Cormorants 6-10:1, Songbirds 4-8:1
+- **Wingbeat frequency:** WBF = 2.4 * mass^(-0.38) Hz. Songbirds 8-20 Hz, Pigeons 5-7 Hz, Geese ~4.5-5.5 Hz, Gulls 3-5 Hz

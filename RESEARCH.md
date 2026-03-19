@@ -34,7 +34,7 @@
 ### 4. Universal Wingbeat Frequency Scaling (PLOS ONE 2024)
 - **Link**: https://pmc.ncbi.nlm.nih.gov/articles/PMC11152310/
 - **Law**: WBF = 2.4 * mass^(-0.38) Hz
-- **Expected ranges**: Songbirds 8-20 Hz, Pigeons 5-7 Hz, Gulls 3-5 Hz, Geese 2.5-4 Hz, BoP minimal (soaring)
+- **Expected ranges**: Songbirds 8-20 Hz, Pigeons 5-7 Hz, Gulls 3-5 Hz, Geese ~4.5-5.5 Hz, BoP minimal (soaring)
 
 ### 5. ML Algorithms in Radar Ornithology (Rosa et al. 2016)
 - **Link**: https://onlinelibrary.wiley.com/doi/abs/10.1111/ibi.12333
@@ -491,7 +491,7 @@ Our best model (E38, LB=0.53, LOMO=0.3615) suffers from temporal distribution sh
 
 **Scaling law:** WBF = 2.4 * mass^(-0.38) Hz (allometric relationship)
 
-**OUR LIMITATION:** Robin Radar MAX likely samples at 1-5 Hz -- BELOW Nyquist for most wingbeat frequencies. We CANNOT directly extract wingbeat frequency. BUT:
+**OUR LIMITATION:** Robin Radar MAX samples at exactly 1 Hz (60 RPM = 1 scan/second) -- BELOW Nyquist for most wingbeat frequencies. We CANNOT directly extract wingbeat frequency. BUT:
 - RCS modulation depth (amplitude of fluctuation) still works at low sampling
 - RCS autocorrelation captures periodicity even if aliased
 - RCS variance distinguishes continuous flappers from gliders
@@ -524,17 +524,17 @@ Our best model (E38, LB=0.53, LOMO=0.3615) suffers from temporal distribution sh
 
 **Five main flight modes (from Swiss Birdradar + biomechanics lit):**
 
-1. **Continuous flapping** (Waders, Pigeons, Cormorants)
+1. **Continuous flapping** (Waders, Pigeons, Cormorants, Geese)
    - Signal: steady RCS modulation, no pauses
    - Detection: low variance in windowed RCS variance, high autocorrelation
 
-2. **Bounding flight** (Songbirds ONLY, body mass <300g)
+2. **Bounding flight** (primarily Songbirds, body mass <300g; intermediate-mass songbirds also use flap-gliding at lower speeds)
    - Pattern: rapid flap burst -> fold wings -> freefall -> repeat
    - Signal: periodic high-variance and near-zero-variance RCS segments
    - Altitude oscillates in phase with flap/fold cycle (0.5-2 Hz)
    - KEY: during bound phase, wings FOLDED -> RCS drops. Alt and RCS are positively correlated.
 
-3. **Flap-gliding** (Gulls, Geese, some Ducks)
+3. **Flap-gliding** (Gulls, some Ducks)
    - Pattern: flapping bursts -> extended glides on outstretched wings
    - Signal: long glide segments (low RCS variance)
    - Mean glide duration >> mean flap duration
@@ -581,7 +581,7 @@ Our best model (E38, LB=0.53, LOMO=0.3615) suffers from temporal distribution sh
 
 **Glide ratio estimation:**
 - During descending + low-RCS-variance segments: horizontal_dist / vertical_loss = L/D proxy
-- BoP: 10-20:1, Gulls: 15-25:1 (best gliders), Songbirds: 4-8:1, Cormorants: 6-10:1
+- BoP: 10-20:1, Gulls: 8-12:1, Songbirds: 4-8:1, Cormorants: 6-10:1
 
 **Wing loading proxy:**
 - Wing loading = body weight / wing area, determines minimum flight speed
