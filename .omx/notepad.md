@@ -1,0 +1,11 @@
+
+
+## WORKING MEMORY
+[2026-04-07T21:56:19.232Z] Ralph verification evidence: editable install passed; pytest tests passed (5); research-os status/doctor passed; baseline-run passed against test_e175_best.npy writing only to .pilot outputs; no-root-leak check on submission.csv stayed UNCHANGED; validate-compare-runs passed against oof_e175_best.npy + test_e175_best.npy; report-and-memory-update passed on temp root.
+
+[2026-04-07T21:57:04.564Z] Attempting final architect sign-off after fixes: root-scoped legacy bridge, doctor no longer depends on e103 template, lazy workflow imports, no-root-leak baseline-run, validate-compare-runs and temp-root memory update all pass.
+[2026-04-11T14:26:03.249Z] Created docs/JURY_PITCH_DOSSIER.md with public-role-based jury portfolios for Marelle van Beerschoten, Joep Breuer, Andy Lürling, Geert-Jan Houben, and Bart Kranstauber; includes likely evaluation lenses, question styles, framing cues, and guardrails against private psych profiling.
+[2026-04-11T14:32:53.994Z] Ultrawork completed: created docs/JURY_TARGETING_PLAYBOOK.md with juror-specific interest profiles, resonance angles, trust-losing patterns, tailored phrases, and answer styles for Marelle, Joep, Andy, Geert-Jan, and Bart; grounded in public professional sources only.
+[2026-04-11T14:50:27.691Z] Built congress prep docs: docs/CONGRESS_PROFILE.md and verified docs/CONGRESS_NETWORKING_PLAYBOOK.md. Positioning centers on team as research workflow + honest validation + deployable system, not just model performance. Includes venue/event profile, attendee clusters, exhibitor signals, and audience-specific hooks.
+[2026-04-11T16:07:11.061Z] Built production-ready presentation artifacts in docs/presentation: FINAL_SLIDE_COPY.md, PITCH_SCRIPT_4MIN.md, FIGURE_SPECS.md, and ai-cup-congress-pitch-final.html using the approved system-anchored workflow hybrid and Math Notebook Airspace direction.
+[2026-04-11T16:14:15.830Z] Redesigned HTML deck after user feedback that slides 2-7 were repetitive/ugly. New file: docs/presentation/ai-cup-congress-pitch-redesign.html. Replaced repeated card-grid language with slide-specific compositions (orbital problem slide, system board, workflow rail, insight triptych, proof anchor + side supports, deployment steps). Refined FINAL_SLIDE_COPY.md accordingly.

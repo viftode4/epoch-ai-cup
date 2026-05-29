@@ -1,0 +1,61 @@
+E205 ensemble blend weights (extracted for TNO)
+Source: experiments/e205_e188_variations.py (deterministic, seeded)
+============================================================
+
+## multi_restart  (OOF macro-mAP = 0.8724)
+   submissions: e205_multi_restart_raw.csv, e205_multi_restart_T085.csv, e205_multi_restart_T09.csv
+     e79                      0.017209
+     e175_best                0.001024
+     e175_lgb                 0.094484
+     e179_best                0.005186
+     e185_tabpfn_relabel      0.251954
+     e185_tabpfn_all          0.034104
+     e186_ovo                 0.567688
+     e180_cnn                 0.022691
+     e187_blend               0.004787
+     e173                     0.000144
+     e179_cb                  0.000729
+
+## power_p2  (OOF macro-mAP = 0.8739)
+   submissions: e205_power_p2.csv
+     e79                      0.217018
+     e175_best                0.009426
+     e175_lgb                 0.040658
+     e179_best                0.002706
+     e185_tabpfn_relabel      0.105550
+     e185_tabpfn_all          0.200613
+     e186_ovo                 0.406394
+     e180_cnn                 0.010715
+     e187_blend               0.000002
+     e173                     0.006217
+     e179_cb                  0.000701
+
+## power_p3  (OOF macro-mAP = 0.8637)
+   submissions: e205_power_p3.csv
+     e79                      0.273645
+     e175_best                0.031572
+     e175_lgb                 0.060553
+     e179_best                0.000987
+     e185_tabpfn_relabel      0.118173
+     e185_tabpfn_all          0.055319
+     e186_ovo                 0.290046
+     e180_cnn                 0.134218
+     e187_blend               0.000007
+     e173                     0.008243
+     e179_cb                  0.027237
+
+## e188_plus_dart_cnn  (OOF macro-mAP = 0.8792)
+   submissions: e205_e188_plus_dart_cnn.csv, e205_e188_plus_dart_cnn_T09.csv
+     e79                      0.210805
+     e175_best                0.028200
+     e175_lgb                 0.000030
+     e179_best                0.013006
+     e185_tabpfn_relabel      0.000522
+     e185_tabpfn_all          0.027608
+     e186_ovo                 0.534752
+     e180_cnn                 0.075487
+     e187_blend               0.002962
+     e173                     0.000808
+     e179_cb                  0.000175
+     e201_dart                0.067470
+     e182_cnn_v3              0.038176

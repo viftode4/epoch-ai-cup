@@ -1,0 +1,114 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Math Notebook Airspace — Hybrid Preview</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500;600&family=Archivo:wght@700;800&display=swap" rel="stylesheet">
+<style>
+*{box-sizing:border-box}html,body{height:100%;margin:0}body{overflow:hidden;background:#f3efe6;color:#121820;font-family:"IBM Plex Sans",sans-serif}
+.slide{width:100vw;height:100vh;height:100dvh;overflow:hidden;position:relative;background:
+radial-gradient(circle at 82% 18%, rgba(222,87,43,.12), transparent 20%),
+radial-gradient(circle at 74% 74%, rgba(10,132,126,.09), transparent 22%),
+linear-gradient(180deg,#f7f3eb 0%,#efe7db 100%)}
+.slide::before,.slide::after{content:"";position:absolute;left:0;right:0;height:16px;background:#de572b}.slide::after{top:auto;bottom:0;background:#0a847d}
+.paper-grain{position:absolute;inset:0;opacity:.18;pointer-events:none;background-image:radial-gradient(rgba(18,24,32,.15) .45px, transparent .65px);background-size:10px 10px;mix-blend-mode:multiply}
+.math-grid{position:absolute;inset:0;opacity:.42;background-image:linear-gradient(to right, rgba(18,24,32,.055) 1px, transparent 1px),linear-gradient(to bottom, rgba(18,24,32,.055) 1px, transparent 1px);background-size:46px 46px;mask-image:linear-gradient(180deg,rgba(0,0,0,.86),rgba(0,0,0,.28))}
+.content{position:relative;z-index:3;height:100%;padding:clamp(26px,4vw,64px);display:grid;grid-template-rows:auto 1fr auto;gap:18px}
+.top{display:flex;justify-content:space-between;align-items:flex-start;gap:22px}.label{font-size:11px;letter-spacing:.18em;text-transform:uppercase;color:#69737e;font-family:"IBM Plex Mono",monospace}.theme{max-width:30ch;text-align:right;font-size:13px;line-height:1.45;color:#5f6873}
+.hero{display:grid;grid-template-columns:minmax(0,1.02fr) minmax(380px,.98fr);gap:clamp(26px,3vw,56px);align-items:center}
+.copy{display:flex;flex-direction:column;gap:clamp(12px,1.7vw,22px)}.kicker{font-size:clamp(13px,1vw,16px);letter-spacing:.16em;text-transform:uppercase;color:#bf4d28;font-family:"IBM Plex Mono",monospace}
+h1{margin:0;max-width:9ch;font-family:"Archivo",sans-serif;font-weight:800;letter-spacing:-.055em;font-size:clamp(48px,6vw,94px);line-height:.9}
+h2{margin:0;max-width:36ch;font-size:clamp(18px,1.65vw,24px);line-height:1.38;color:#33404b;font-weight:500}
+p{margin:0;max-width:56ch;font-size:clamp(15px,1.08vw,18px);line-height:1.56;color:#4d5864}
+.badges{display:flex;gap:10px;flex-wrap:wrap}.badge{padding:10px 14px;border-radius:999px;font-size:12px;font-weight:700;letter-spacing:.04em;border:1.5px solid rgba(18,24,32,.08)}.accent{background:#de572b;color:#fff}.alt{background:#0a847d;color:#fff}.neutral{background:#dbe0e6;color:#111920}
+.footer{display:flex;justify-content:space-between;align-items:end;gap:24px}.footer-note{max-width:32ch;font-size:13px;line-height:1.48;color:#606b77}
+.proof{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:14px;min-width:min(54vw,710px)}
+.proof .card{background:rgba(255,255,255,.76);border:2px solid #131922;border-radius:26px;padding:18px 18px 16px;box-shadow:12px 12px 0 rgba(18,24,32,.06);position:relative;overflow:hidden}
+.proof .card::after{content:"";position:absolute;inset:auto -8px -8px auto;width:78px;height:78px;background:repeating-linear-gradient(135deg, rgba(18,24,32,.07) 0 2px, transparent 2px 7px);opacity:.85;clip-path:polygon(100% 0,0 100%,100% 100%)}
+.proof strong{display:block;font-size:12px;letter-spacing:.14em;text-transform:uppercase;color:#bf4d28;margin-bottom:8px;font-family:"IBM Plex Mono",monospace}.proof span{font-size:14px;line-height:1.45;color:#3d4752}
+.visual{position:relative;min-height:448px}
+.panel{position:absolute;inset:22px 8px 22px 28px;background:rgba(255,255,255,.72);border:2px solid #131922;border-radius:28px;box-shadow:16px 16px 0 rgba(18,24,32,.06)}
+.panel::before{content:"";position:absolute;inset:0;border-radius:28px;background:repeating-linear-gradient(135deg, rgba(18,24,32,.03) 0 2px, transparent 2px 10px);mask-image:linear-gradient(135deg, transparent 0 58%, black 58% 100%)}
+.figure-label{position:absolute;background:#fff;border:2px solid #131922;border-radius:16px;padding:10px 12px;font-size:12px;font-weight:700;font-family:"IBM Plex Mono",monospace;box-shadow:8px 8px 0 rgba(18,24,32,.05)}
+.fl1{left:34px;top:20px}.fl2{right:26px;top:26px}.fl3{left:54px;bottom:26px}
+.diagram{position:absolute;inset:78px 46px 52px 52px;display:grid;grid-template-columns:1.15fr .85fr;gap:18px}
+.leftboard,.rightboard{position:relative;background:rgba(255,255,255,.78);border:2px solid #131922;border-radius:24px;overflow:hidden}
+.leftboard::before,.rightboard::before{content:"";position:absolute;inset:0;background:repeating-linear-gradient(0deg, rgba(18,24,32,.045) 0 1px, transparent 1px 26px),repeating-linear-gradient(90deg, rgba(18,24,32,.045) 0 1px, transparent 1px 26px);opacity:.7}
+.trace{position:absolute;inset:0;z-index:2}.trace path{fill:none;stroke-linecap:round}.trace .t1{stroke:#de572b;stroke-width:3}.trace .t2{stroke:#0a847d;stroke-width:3}.trace .t3{stroke:#9c7759;stroke-width:2.2;stroke-dasharray:6 7}.trace .hash{stroke:#131922;stroke-width:1.2;opacity:.3}
+.call{position:absolute;background:#fff;border:2px solid #131922;border-radius:18px;padding:10px 12px;font-size:11px;line-height:1.35;font-family:"IBM Plex Mono",monospace;color:#19212a;z-index:3;box-shadow:8px 8px 0 rgba(18,24,32,.05)}
+.c1{right:22px;top:20px;width:138px}.c2{left:20px;bottom:18px;width:154px}.c3{right:26px;bottom:24px;width:126px}
+.seq{position:absolute;inset:18px;display:grid;grid-template-rows:repeat(3,1fr);gap:12px;z-index:2}.node{background:#fff;border:2px solid #131922;border-radius:20px;padding:12px 14px;display:flex;flex-direction:column;justify-content:center;gap:4px;box-shadow:8px 8px 0 rgba(18,24,32,.05)}.node strong{font-size:13px;font-family:"IBM Plex Mono",monospace;letter-spacing:.04em;color:#bf4d28}.node span{font-size:13px;line-height:1.36;color:#3f4a55}.node small{font-size:11px;color:#67717c}
+.arrow{position:absolute;right:14px;top:50%;transform:translateY(-50%);font-size:28px;color:#de572b;font-weight:700;font-family:"IBM Plex Mono",monospace}
+.sketch-turbine,.sketch-turbine2{position:absolute;width:3px;background:rgba(19,25,34,.42);z-index:3}.sketch-turbine{right:220px;bottom:24px;height:104px}.sketch-turbine2{right:142px;bottom:20px;height:82px}.sketch-turbine::before,.sketch-turbine::after,.sketch-turbine2::before,.sketch-turbine2::after{content:"";position:absolute;left:-2px;top:24px;height:2px;background:rgba(19,25,34,.28);transform-origin:2px 1px}.sketch-turbine::before{width:74px;transform:rotate(19deg)}.sketch-turbine::after{width:74px;transform:rotate(-27deg)}.sketch-turbine2::before{width:58px;transform:rotate(17deg)}.sketch-turbine2::after{width:58px;transform:rotate(-25deg)}
+.animate{opacity:0;transform:translateY(18px);animation:rise .9s cubic-bezier(.2,.8,.2,1) forwards}.a2{animation-delay:.12s}.a3{animation-delay:.24s}.a4{animation-delay:.36s}.a5{animation-delay:.48s}
+@keyframes rise{to{opacity:1;transform:none}}
+@media (max-width:1020px){.hero{grid-template-columns:1fr}.visual{min-height:360px}.diagram{grid-template-columns:1fr;inset:74px 34px 46px 34px}.proof{grid-template-columns:1fr;min-width:0}.footer{flex-direction:column;align-items:flex-start}}
+@media (prefers-reduced-motion:reduce){*,*::before,*::after{animation:none!important;transition:none!important;opacity:1!important;transform:none!important}}
+</style>
+</head>
+<body>
+<main class="slide">
+<div class="paper-grain"></div><div class="math-grid"></div>
+<section class="content">
+  <div class="top">
+    <div class="label animate">AI Cup 2026 / design refinement</div>
+    <div class="theme animate a2">more math-notebook, more applied-research, more “we actually thought through the system” energy</div>
+  </div>
+  <div class="hero">
+    <div class="copy">
+      <div class="kicker animate a2">hybrid + notebook direction</div>
+      <h1 class="animate a2">Math Notebook Airspace</h1>
+      <h2 class="animate a3">Data clarity from the structured style, but with hashed figures, sketch-like system marks, and nerdier visual reasoning.</h2>
+      <p class="animate a4">This direction is built for your exact vibe request: technical, cool, and a little obsessive in a good way. It feels like a polished research notebook rather than a default startup deck — while still being readable in a congress room.</p>
+      <div class="badges animate a5">
+        <span class="badge accent">workflow</span>
+        <span class="badge alt">validation</span>
+        <span class="badge neutral">deployability</span>
+      </div>
+    </div>
+    <div class="visual animate a3">
+      <div class="panel"></div>
+      <div class="figure-label fl1">airspace overlap</div>
+      <div class="figure-label fl2">fair-tech system</div>
+      <div class="figure-label fl3">research notebook feel</div>
+      <div class="diagram">
+        <div class="leftboard">
+          <svg class="trace" viewBox="0 0 420 300" preserveAspectRatio="none">
+            <path class="hash" d="M22 34H396M22 68H396M22 102H396M22 136H396M22 170H396M22 204H396M22 238H396M22 272H396"/>
+            <path class="hash" d="M34 18V286M78 18V286M122 18V286M166 18V286M210 18V286M254 18V286M298 18V286M342 18V286M386 18V286"/>
+            <path class="t1" d="M22 214C78 190 108 142 162 126C214 110 250 122 302 92C346 66 374 60 402 42"/>
+            <path class="t2" d="M30 260C90 238 132 214 182 170C228 130 266 142 314 124C356 108 386 82 410 68"/>
+            <path class="t3" d="M20 120C78 110 126 92 174 104C230 118 266 82 322 86C366 90 388 82 410 78"/>
+          </svg>
+          <div class="call c1">constraint := seasonal shift</div>
+          <div class="call c2">signal = movement + radar + context</div>
+          <div class="call c3">metric ≈ ranking quality</div>
+          <div class="sketch-turbine"></div>
+          <div class="sketch-turbine2"></div>
+        </div>
+        <div class="rightboard">
+          <div class="seq">
+            <div class="node"><strong>observe()</strong><span>radar trajectories + external context</span><small>raw sensing layer</small></div>
+            <div class="node"><strong>validate()</strong><span>honest month-shift checks</span><small>keep / reject logic</small></div>
+            <div class="node"><strong>deploy()</strong><span>decision support for mitigation</span><small>human in the loop</small></div>
+          </div>
+          <div class="arrow">↯</div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="footer">
+    <div class="proof animate a5">
+      <div class="card"><strong>typography</strong><span>Archivo + IBM Plex feels sharp, technical, and still readable from a distance.</span></div>
+      <div class="card"><strong>hashed figures</strong><span>Sketch-grid overlays and notebook annotations create the nerdy applied-research vibe you asked for.</span></div>
+      <div class="card"><strong>theme fit</strong><span>Still feels civic, fair-tech, and deployable instead of dark-cyber or generic VC template.</span></div>
+    </div>
+    <div class="footer-note animate a5">If this is the right direction, the full deck should use it consistently for workflow, architecture, insight, proof, and deployment slides.</div>
+  </div>
+</section>
+</main>
+</body>
+</html>

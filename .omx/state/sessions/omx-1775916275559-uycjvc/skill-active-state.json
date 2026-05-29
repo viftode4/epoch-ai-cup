@@ -1,0 +1,29 @@
+{
+  "version": 1,
+  "active": true,
+  "skill": "ralplan",
+  "keyword": "$ralplan",
+  "phase": "planning",
+  "activated_at": "2026-04-11T16:03:16.676Z",
+  "updated_at": "2026-04-11T16:03:16.676Z",
+  "source": "keyword-detector",
+  "session_id": "omx-1775916275559-uycjvc",
+  "thread_id": "019d7cdb-f408-73e0-b18a-767c924d711e",
+  "turn_id": "019d7d3f-6b07-72e0-a18b-7373e51206b4",
+  "active_skills": [
+    {
+      "skill": "ralplan",
+      "phase": "planning",
+      "active": true,
+      "activated_at": "2026-04-11T16:03:16.676Z",
+      "updated_at": "2026-04-11T16:03:16.676Z",
+      "session_id": "omx-1775916275559-uycjvc",
+      "thread_id": "019d7cdb-f408-73e0-b18a-767c924d711e",
+      "turn_id": "019d7d3f-6b07-72e0-a18b-7373e51206b4"
+    }
+  ],
+  "initialized_mode": "ralplan",
+  "initialized_state_path": ".omx/state/sessions/omx-1775916275559-uycjvc/ralplan-state.json",
+  "iteration": 3,
+  "last_turn_at": "2026-04-11T16:14:21.927Z"
+}

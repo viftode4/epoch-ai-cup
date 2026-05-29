@@ -98,6 +98,11 @@ def _temperature_scale(probs: np.ndarray, T: float) -> np.ndarray:
     return exp_s / exp_s.sum(axis=1, keepdims=True)
 
 
+def _load_prediction_matrix(path: Path) -> np.ndarray:
+    """Load a prediction matrix from legacy numpy artifacts."""
+    return np.asarray(np.load(path, allow_pickle=True), dtype=float)
+
+
 def _load_calibration_pairs() -> list[tuple[float, float]]:
     """Load calibration pairs, trying CSV file first, falling back to hardcoded.
 
@@ -200,9 +205,18 @@ def _iw_macro_map(
 
     # Per-sample importance weight: w_target[class] / p_fold[class]
     safe_p = np.maximum(p_fold, 1e-12)
-    sample_w = (w_target / safe_p)[y]
-    sample_w = np.clip(sample_w, 0, max_weight)
+    raw_w = (w_target / safe_p)[y]
+    n_clipped = int((raw_w > max_weight).sum())
+    sample_w = np.clip(raw_w, 0, max_weight)
     sample_w = sample_w / sample_w.mean()  # normalize for numerical stability
+
+    # Effective sample size diagnostic (Kish's ESS)
+    n_eff = float(sample_w.sum() ** 2 / (sample_w ** 2).sum())
+    _cache.setdefault("iw_diagnostics", []).append({
+        "n": len(y), "n_eff": round(n_eff, 1),
+        "frac_clipped": round(n_clipped / len(y), 3) if len(y) > 0 else 0,
+        "max_ratio": round(float(raw_w.max()), 2),
+    })
 
     y_bin = np.zeros((len(y), N_CLASSES), dtype=int)
     y_bin[np.arange(len(y)), y] = 1
@@ -235,38 +249,48 @@ def _load_train_data():
     return result
 
 
-def _load_oof() -> tuple[np.ndarray, str]:
-    if "oof" in _cache:
+def _load_oof(candidates: list[Path] | None = None) -> tuple[np.ndarray, str]:
+    if candidates is None and "oof" in _cache:
         return _cache["oof"]
-    for name, path in [
-        ("LOMO (honest)", ROOT / "oof_lomo.npy"),
-        ("SKF E79", ROOT / "oof_e79.npy"),
-        ("SKF E50", ROOT / "oof_e50.npy"),
-    ]:
+    if candidates is None:
+        search_space = [
+            ("LOMO (honest)", ROOT / "oof_lomo.npy"),
+            ("SKF E79", ROOT / "oof_e79.npy"),
+            ("SKF E50", ROOT / "oof_e50.npy"),
+        ]
+    else:
+        search_space = [(Path(path).name, Path(path)) for path in candidates]
+    for name, path in search_space:
         if path.exists():
-            result = (renorm_rows(np.load(path).astype(float)), name)
-            _cache["oof"] = result
+            result = (renorm_rows(_load_prediction_matrix(path)), name)
+            if candidates is None:
+                _cache["oof"] = result
             return result
     raise FileNotFoundError("No OOF found (oof_lomo.npy / oof_e79.npy / oof_e50.npy)")
 
 
-def _load_test_base():
-    if "test" in _cache:
+def _load_test_base(candidates: list[Path] | None = None):
+    if candidates is None and "test" in _cache:
         return _cache["test"]
-    for path in [ROOT / "test_e79.npy", ROOT / "test_e50.npy"]:
+    search_space = [ROOT / "test_e79.npy", ROOT / "test_e50.npy"] if candidates is None else [Path(path) for path in candidates]
+    for path in search_space:
         if path.exists():
-            test_preds = renorm_rows(np.load(path).astype(float))
+            test_preds = renorm_rows(_load_prediction_matrix(path))
             test_df = load_test()
             test_months = pd.to_datetime(
                 test_df["timestamp_start_radar_utc"]
             ).dt.month.values
             result = (test_preds, test_df, test_months)
-            _cache["test"] = result
+            if candidates is None:
+                _cache["test"] = result
             return result
     return None
 
 
-def _get_mlls_weights() -> dict[int, np.ndarray]:
+def _get_mlls_weights(
+    oof_candidates: list[Path] | None = None,
+    test_candidates: list[Path] | None = None,
+) -> dict[int, np.ndarray]:
     """Compute GBIF-regularized MLLS class proportions per test month (cached).
 
     Blends MLLS estimates with GBIF biological priors using Bayesian shrinkage:
@@ -276,28 +300,31 @@ def _get_mlls_weights() -> dict[int, np.ndarray]:
     Small months (Dec n=133) get pulled toward GBIF (beta~0.57).
     Large months (Oct n=803) stay mostly MLLS (beta~0.89).
     """
-    if "mlls" in _cache:
+    if oof_candidates is None and test_candidates is None and "mlls" in _cache:
         return _cache["mlls"]
 
     train_df, y, months = _load_train_data()
-    oof, _ = _load_oof()
-    test_data = _load_test_base()
+    oof, _ = _load_oof(oof_candidates)
+    test_data = _load_test_base(test_candidates)
 
     # Training class proportions
     counts = np.bincount(y, minlength=N_CLASSES).astype(float)
     p_train = counts / counts.sum()
-    _cache["p_train"] = p_train
+    if oof_candidates is None and test_candidates is None:
+        _cache["p_train"] = p_train
 
     # Temperature scaling (fit on OOF)
     T = _find_temperature(oof, y)
-    _cache["T"] = T
+    if oof_candidates is None and test_candidates is None:
+        _cache["T"] = T
 
     # GBIF biological priors per month
     gbif_priors = build_gbif_priors(p_train)
 
     if test_data is None:
         # No test data: fall back to GBIF priors
-        _cache["mlls"] = gbif_priors
+        if oof_candidates is None and test_candidates is None:
+            _cache["mlls"] = gbif_priors
         return gbif_priors
 
     test_preds, _, test_months = test_data
@@ -323,12 +350,13 @@ def _get_mlls_weights() -> dict[int, np.ndarray]:
         w_blend /= w_blend.sum()
         w[m] = w_blend
 
-    _cache["mlls"] = w
-    _cache["mlls_raw"] = {
-        m: _mlls_estimate(test_cal[test_months == m], p_train)
-        if (test_months == m).sum() >= N_CLASSES else p_train.copy()
-        for m in sorted(set(test_months))
-    }
+    if oof_candidates is None and test_candidates is None:
+        _cache["mlls"] = w
+        _cache["mlls_raw"] = {
+            m: _mlls_estimate(test_cal[test_months == m], p_train)
+            if (test_months == m).sum() >= N_CLASSES else p_train.copy()
+            for m in sorted(set(test_months))
+        }
     return w
 
 
@@ -339,6 +367,9 @@ def _get_mlls_weights() -> dict[int, np.ndarray]:
 def eval_pp(
     pp_fn,
     verbose: bool = True,
+    *,
+    oof_candidates: list[Path] | None = None,
+    test_candidates: list[Path] | None = None,
 ) -> dict:
     """Evaluate PP using importance-weighted mAP estimation.
 
@@ -359,10 +390,11 @@ def eval_pp(
             mlls:          MLLS-estimated class proportions per month
     """
     train_df, y, months = _load_train_data()
-    oof, oof_mode = _load_oof()
-    w_test = _get_mlls_weights()
-    p_train = _cache["p_train"]
-    T = _cache["T"]
+    oof, oof_mode = _load_oof(oof_candidates)
+    counts = np.bincount(y, minlength=N_CLASSES).astype(float)
+    p_train = counts / counts.sum()
+    T = _find_temperature(oof, y)
+    w_test = _get_mlls_weights(oof_candidates, test_candidates)
 
     # -------------------------------------------------------------------
     # Per-fold evaluation
@@ -460,7 +492,7 @@ def eval_pp(
     # -------------------------------------------------------------------
     pct_changed_5 = None
     pct_changed_10 = None
-    test_data = _load_test_base()
+    test_data = _load_test_base(test_candidates)
     if test_data is not None:
         test_base, test_df, test_months = test_data
         new_test = pp_fn(test_base, test_df, test_months, train_df, y)
@@ -591,6 +623,18 @@ def _print_report(
     if pct_changed_5 is not None:
         risk = "safe" if pct_changed_5 < 20 else ("elevated" if pct_changed_5 < 35 else "HIGH")
         print(f"    Conservatism: {pct_changed_5:.1f}% shifted >5%, {pct_changed_10:.1f}% shifted >10% [{risk}]", flush=True)
+
+    # IW diagnostics
+    iw_diag = _cache.get("iw_diagnostics", [])
+    if iw_diag:
+        print(f"\n  IW DIAGNOSTICS:", flush=True)
+        for d in iw_diag:
+            print(
+                f"    N={d['n']}, N_eff={d['n_eff']}, "
+                f"clipped={d['frac_clipped']:.1%}, max_ratio={d['max_ratio']}",
+                flush=True,
+            )
+        _cache["iw_diagnostics"] = []  # reset for next call
 
     print(f"\n  >> {recommendation}", flush=True)
     print("=" * W, flush=True)

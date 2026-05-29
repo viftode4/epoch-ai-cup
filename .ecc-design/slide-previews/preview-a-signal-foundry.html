@@ -1,0 +1,32 @@
+<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Signal Foundry</title><style>
+*{box-sizing:border-box}html,body{height:100%;margin:0}body{overflow:hidden}
+.slide{width:100vw;height:100vh;height:100dvh;overflow:hidden;position:relative}
+.content{position:relative;z-index:3;height:100%;padding:clamp(28px,4vw,64px);display:flex;flex-direction:column;justify-content:space-between}
+.top{display:flex;justify-content:space-between;align-items:flex-start;gap:24px}.label{font-size:12px;letter-spacing:.16em;text-transform:uppercase;opacity:.75}
+.hero{display:grid;grid-template-columns:minmax(0,1.1fr) minmax(320px,.9fr);gap:clamp(24px,3vw,56px);align-items:center;flex:1}
+.copy{display:flex;flex-direction:column;gap:clamp(14px,1.8vw,22px)}
+.badges{display:flex;gap:10px;flex-wrap:wrap}.badge{padding:10px 14px;border-radius:999px;font-size:12px;font-weight:700;letter-spacing:.04em}
+.kicker{font-size:clamp(14px,1vw,18px);letter-spacing:.12em;text-transform:uppercase}
+h1{margin:0;max-width:10ch;font-size:clamp(44px,6vw,92px);line-height:.92}
+h2{margin:0;max-width:36ch;font-size:clamp(18px,1.65vw,24px);line-height:1.4;font-weight:500}
+p{margin:0;max-width:54ch;font-size:clamp(15px,1.15vw,18px);line-height:1.5;opacity:.86}
+.stack{display:grid;gap:14px}.card{padding:20px;border-radius:24px;backdrop-filter:blur(12px)}
+.card strong{display:block;font-size:14px;letter-spacing:.12em;text-transform:uppercase;margin-bottom:10px}.card p{max-width:none;font-size:15px;line-height:1.45}
+.footer{display:flex;justify-content:space-between;align-items:end;gap:24px}.footer-note{max-width:30ch;font-size:13px;line-height:1.45;opacity:.74}
+.animate{opacity:0;transform:translateY(20px);animation:rise .9s cubic-bezier(.2,.8,.2,1) forwards}.a2{animation-delay:.14s}.a3{animation-delay:.28s}.a4{animation-delay:.42s}.a5{animation-delay:.56s}
+@keyframes rise{to{opacity:1;transform:none}}
+@media (max-width: 920px){.hero{grid-template-columns:1fr}.visual{min-height:280px}.footer{flex-direction:column;align-items:flex-start}}
+@media (prefers-reduced-motion:reduce){.animate,*{animation:none!important;transition:none!important;opacity:1!important;transform:none!important}}
+
+@import url("https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;700&family=Sora:wght@600;700;800&display=swap");
+body{background:#0f1216;color:#f5efe5;font-family:"Space Grotesk",sans-serif}
+.slide::before,.slide::after{content:"";position:absolute;left:0;right:0;height:16px;background:#ff7a1a;z-index:2}.slide::after{top:auto;bottom:0;background:#1cc7b5}
+.label,.kicker{color:#aeb6c2}.kicker{color:#ffb06f}.badge{background:#20262d;color:#f5efe5;border:1px solid rgba(255,255,255,.08)}.badge.accent{background:#ff7a1a;color:#0f1216}.badge.alt{background:#1cc7b5;color:#0f1216}
+h1{font-family:"Sora",sans-serif;font-weight:800;letter-spacing:-.04em}.card{background:linear-gradient(180deg,rgba(29,34,40,.94),rgba(18,22,27,.92));border:1px solid rgba(255,255,255,.08);box-shadow:0 20px 60px rgba(0,0,0,.35)}.card strong{color:#ffb06f}
+.visual{position:relative;min-height:420px}
+.ring,.ring2,.ring3,.ring4{position:absolute;border-radius:50%;border:1px solid rgba(255,255,255,.12)}
+.ring{width:420px;height:420px;right:20px;top:10px}.ring2{width:320px;height:320px;right:70px;top:60px}.ring3{width:220px;height:220px;right:120px;top:110px}.ring4{width:120px;height:120px;right:170px;top:160px}
+.node{position:absolute;border-radius:50%;filter:blur(.1px)}.n1{width:18px;height:18px;background:#ff7a1a;right:215px;top:58px;box-shadow:0 0 40px rgba(255,122,26,.65)}.n2{width:14px;height:14px;background:#1cc7b5;right:60px;top:195px;box-shadow:0 0 36px rgba(28,199,181,.5)}.n3{width:12px;height:12px;background:#ffd166;right:275px;top:330px;box-shadow:0 0 32px rgba(255,209,102,.45)}
+.trace{position:absolute;inset:0}.trace path{fill:none;stroke-linecap:round;stroke-width:3}.trace .t1{stroke:#ff7a1a;opacity:.88}.trace .t2{stroke:#1cc7b5;opacity:.88}.trace .t3{stroke:#ffd166;opacity:.62;stroke-dasharray:8 10}
+.grid{position:absolute;inset:-8% -8%;background-image:linear-gradient(rgba(255,255,255,.035) 1px,transparent 1px),linear-gradient(90deg,rgba(255,255,255,.035) 1px,transparent 1px);background-size:44px 44px;mask-image:radial-gradient(circle at 68% 45%, black 28%, transparent 72%)}
+</style></head><body><main class="slide"><div class="content"><div class="top"><div class="label animate">AI Cup 2026 congress preview</div><div class="footer-note animate a2">Best for the actual congress room: industrial, high-contrast, memorable, and confident without looking like a startup template.</div></div><div class="hero"><section class="copy"><div class="kicker animate a2">presentation direction</div><h1 class="animate a2">Signal Foundry</h1><h2 class="animate a3">Bird-safe wind energy needs trustworthy AI.</h2><p class="animate a4">This direction matches DeFabrique and the “Fair Tech” framing. It makes your workflow feel like an engine: hypothesis, iteration, validation, deployment.</p><div class="badges animate a5"><span class="badge accent">workflow</span><span class="badge alt">deployability</span><span class="badge">biodiversity</span></div></section><div class="visual animate a3"><div class="grid"></div><div class="ring"></div><div class="ring2"></div><div class="ring3"></div><div class="ring4"></div><svg class="trace" viewBox="0 0 520 460"><path class="t1" d="M74 310C160 232 172 160 235 126C286 98 360 130 430 82"/><path class="t2" d="M128 366C205 308 270 320 328 265C365 229 375 179 450 156"/><path class="t3" d="M64 162C126 182 172 150 236 176C292 198 326 144 388 170"/></svg><div class="node n1"></div><div class="node n2"></div><div class="node n3"></div></div></div><div class="footer"><div class="stack animate a5"><div class="card"><strong>Why this could work</strong><p>It gives the room a memorable emotional frame while still leaving space for rigor, architecture, and honest validation.</p></div></div><div class="footer-note animate a5">Preview only — one viewport, self-contained, zero-dependency HTML. Pick the design language first, then the full deck.</div></div></div></main></body></html>

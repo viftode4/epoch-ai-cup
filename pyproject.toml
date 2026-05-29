@@ -1,0 +1,27 @@
+[build-system]
+requires = ["setuptools>=69", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "epoch-ai-cup-research-os"
+version = "0.1.0"
+description = "CLI/OMX-first applied-ML research OS pilot extracted from epoch-ai-cup."
+requires-python = ">=3.11"
+dependencies = [
+    "numpy",
+    "pandas",
+    "scikit-learn",
+]
+
+[project.scripts]
+research-os = "research_os.cli:main"
+
+[tool.setuptools]
+include-package-data = true
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["research_os*", "src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

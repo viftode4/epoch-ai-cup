@@ -1,0 +1,31 @@
+<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Data Stage</title><style>
+*{box-sizing:border-box}html,body{height:100%;margin:0}body{overflow:hidden}
+.slide{width:100vw;height:100vh;height:100dvh;overflow:hidden;position:relative}
+.content{position:relative;z-index:3;height:100%;padding:clamp(28px,4vw,64px);display:flex;flex-direction:column;justify-content:space-between}
+.top{display:flex;justify-content:space-between;align-items:flex-start;gap:24px}.label{font-size:12px;letter-spacing:.16em;text-transform:uppercase;opacity:.75}
+.hero{display:grid;grid-template-columns:minmax(0,1.1fr) minmax(320px,.9fr);gap:clamp(24px,3vw,56px);align-items:center;flex:1}
+.copy{display:flex;flex-direction:column;gap:clamp(14px,1.8vw,22px)}
+.badges{display:flex;gap:10px;flex-wrap:wrap}.badge{padding:10px 14px;border-radius:999px;font-size:12px;font-weight:700;letter-spacing:.04em}
+.kicker{font-size:clamp(14px,1vw,18px);letter-spacing:.12em;text-transform:uppercase}
+h1{margin:0;max-width:10ch;font-size:clamp(44px,6vw,92px);line-height:.92}
+h2{margin:0;max-width:36ch;font-size:clamp(18px,1.65vw,24px);line-height:1.4;font-weight:500}
+p{margin:0;max-width:54ch;font-size:clamp(15px,1.15vw,18px);line-height:1.5;opacity:.86}
+.stack{display:grid;gap:14px}.card{padding:20px;border-radius:24px;backdrop-filter:blur(12px)}
+.card strong{display:block;font-size:14px;letter-spacing:.12em;text-transform:uppercase;margin-bottom:10px}.card p{max-width:none;font-size:15px;line-height:1.45}
+.footer{display:flex;justify-content:space-between;align-items:end;gap:24px}.footer-note{max-width:30ch;font-size:13px;line-height:1.45;opacity:.74}
+.animate{opacity:0;transform:translateY(20px);animation:rise .9s cubic-bezier(.2,.8,.2,1) forwards}.a2{animation-delay:.14s}.a3{animation-delay:.28s}.a4{animation-delay:.42s}.a5{animation-delay:.56s}
+@keyframes rise{to{opacity:1;transform:none}}
+@media (max-width: 920px){.hero{grid-template-columns:1fr}.visual{min-height:280px}.footer{flex-direction:column;align-items:flex-start}}
+@media (prefers-reduced-motion:reduce){.animate,*{animation:none!important;transition:none!important;opacity:1!important;transform:none!important}}
+
+@import url("https://fonts.googleapis.com/css2?family=Archivo:wght@600;700;800&family=IBM+Plex+Sans:wght@400;500;600&display=swap");
+body{background:#f3efe7;color:#12171d;font-family:"IBM Plex Sans",sans-serif}.slide::before,.slide::after{content:"";position:absolute;left:0;right:0;height:18px;background:#e3472f}.slide::after{top:auto;bottom:0;background:#111820}
+.label,.kicker{color:#5e6772}.kicker{color:#e3472f}.badge{background:#d8dee6;color:#111820}.badge.accent{background:#e3472f;color:#fff}.badge.alt{background:#111820;color:#fff}
+h1{font-family:"Archivo",sans-serif;font-weight:800;letter-spacing:-.05em;max-width:9ch}.card{background:rgba(255,255,255,.76);border:2px solid #111820;box-shadow:14px 14px 0 rgba(227,71,47,.16)}.card strong{color:#e3472f}
+.visual{position:relative;min-height:420px}
+.panel{position:absolute;inset:18px 0 18px 42px;background:#fff;border:2px solid #111820;box-shadow:18px 18px 0 rgba(227,71,47,.18)}
+.lines{position:absolute;inset:0;background-image:linear-gradient(to right, rgba(17,24,32,.08) 1px, transparent 1px),linear-gradient(to bottom, rgba(17,24,32,.08) 1px, transparent 1px);background-size:54px 54px}
+.metric{position:absolute;background:#111820;color:#fff;padding:14px 16px;border-radius:18px;font-size:13px;font-weight:700;box-shadow:0 14px 26px rgba(17,24,32,.16)}
+.m1{right:36px;top:52px}.m2{left:90px;bottom:94px;background:#e3472f}.m3{right:84px;bottom:50px;background:#0a8f86}
+.diagram{position:absolute;left:84px;top:74px;right:84px;bottom:74px;display:grid;grid-template-columns:repeat(4,1fr);gap:14px;align-items:center}.node{background:#fff;border:2px solid #111820;border-radius:22px;padding:20px;min-height:120px;display:flex;align-items:center;justify-content:center;text-align:center;font-weight:700}.arrow{display:flex;align-items:center;justify-content:center;font-size:32px;color:#e3472f;font-weight:800}
+</style></head><body><main class="slide"><div class="content"><div class="top"><div class="label animate">AI Cup 2026 congress preview</div><div class="footer-note animate a2">Best if you want the strongest possible “rigor / systems / serious applied AI” signal for policymakers, researchers, and judges.</div></div><div class="hero"><section class="copy"><div class="kicker animate a2">presentation direction</div><h1 class="animate a2">Data Stage</h1><h2 class="animate a3">Bird-safe wind energy needs trustworthy AI.</h2><p class="animate a4">This one is crisp, editorial, and boardroom-clean. It is the safest for trust and readability, but less emotionally distinctive than the other two.</p><div class="badges animate a5"><span class="badge accent">workflow</span><span class="badge alt">deployability</span><span class="badge">biodiversity</span></div></section><div class="visual animate a3"><div class="lines"></div><div class="panel"></div><div class="diagram"><div class="node">Sensor inputs</div><div class="arrow">→</div><div class="node">Validation logic</div><div class="node">Decision support</div></div><div class="metric m1">Built to be used</div><div class="metric m2">Not just a benchmark</div><div class="metric m3">Research + deployment</div></div></div><div class="footer"><div class="stack animate a5"><div class="card"><strong>Why this could work</strong><p>It gives the room a memorable emotional frame while still leaving space for rigor, architecture, and honest validation.</p></div></div><div class="footer-note animate a5">Preview only — one viewport, self-contained, zero-dependency HTML. Pick the design language first, then the full deck.</div></div></div></main></body></html>

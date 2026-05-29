@@ -1,0 +1,225 @@
+{
+  "version": "1.0.0",
+  "lastScanned": 1780080565632,
+  "projectRoot": "G:\\Projects\\epoch-ai-cup",
+  "techStack": {
+    "languages": [
+      {
+        "name": "Python",
+        "version": null,
+        "confidence": "high",
+        "markers": [
+          "pyproject.toml"
+        ]
+      }
+    ],
+    "frameworks": [],
+    "packageManager": null,
+    "runtime": null
+  },
+  "build": {
+    "buildCommand": null,
+    "testCommand": "pytest",
+    "lintCommand": "ruff check",
+    "devCommand": null,
+    "scripts": {}
+  },
+  "conventions": {
+    "namingStyle": "snake_case",
+    "importStyle": null,
+    "testPattern": null,
+    "fileOrganization": null
+  },
+  "structure": {
+    "isMonorepo": false,
+    "workspaces": [],
+    "mainDirectories": [
+      "docs",
+      "src",
+      "tests"
+    ],
+    "gitBranches": {
+      "defaultBranch": "main",
+      "branchingStrategy": null
+    }
+  },
+  "customNotes": [],
+  "directoryMap": {
+    "catboost_info": {
+      "path": "catboost_info",
+      "purpose": null,
+      "fileCount": 4,
+      "lastAccessed": 1780080565589,
+      "keyFiles": [
+        "catboost_training.json",
+        "learn_error.tsv",
+        "test_error.tsv",
+        "time_left.tsv"
+      ]
+    },
+    "data": {
+      "path": "data",
+      "purpose": "Data files",
+      "fileCount": 107,
+      "lastAccessed": 1780080565591,
+      "keyFiles": [
+        "alerstam_2007_s1.raw",
+        "alerstam_class_airspeed.csv",
+        "alerstam_species_airspeed.csv",
+        "altitude_winds_hourly.csv",
+        "AVONET.xlsx"
+      ]
+    },
+    "deep_research_reports": {
+      "path": "deep_research_reports",
+      "purpose": null,
+      "fileCount": 0,
+      "lastAccessed": 1780080565595,
+      "keyFiles": []
+    },
+    "docs": {
+      "path": "docs",
+      "purpose": "Documentation",
+      "fileCount": 5,
+      "lastAccessed": 1780080565601,
+      "keyFiles": [
+        "CONGRESS_NETWORKING_PLAYBOOK.md",
+        "CONGRESS_PROFILE.md",
+        "GUIDELINES.md",
+        "JURY_PITCH_DOSSIER.md",
+        "JURY_TARGETING_PLAYBOOK.md"
+      ]
+    },
+    "epoch_ai_cup_research_os.egg-info": {
+      "path": "epoch_ai_cup_research_os.egg-info",
+      "purpose": null,
+      "fileCount": 6,
+      "lastAccessed": 1780080565603,
+      "keyFiles": [
+        "dependency_links.txt",
+        "entry_points.txt",
+        "PKG-INFO",
+        "requires.txt",
+        "SOURCES.txt"
+      ]
+    },
+    "experiments": {
+      "path": "experiments",
+      "purpose": null,
+      "fileCount": 184,
+      "lastAccessed": 1780080565604,
+      "keyFiles": [
+        "ablation_features.py",
+        "analysis_adversarial_validation.py",
+        "analysis_corm_deep.py",
+        "analysis_corm_dtw_minirocket.py",
+        "analysis_corm_fundamentals.py"
+      ]
+    },
+    "kaggle_notebooks": {
+      "path": "kaggle_notebooks",
+      "purpose": null,
+      "fileCount": 5,
+      "lastAccessed": 1780080565605,
+      "keyFiles": [
+        "e156_kaggle.py",
+        "e157_kaggle.py",
+        "e158_kaggle.py",
+        "e167_kaggle.py",
+        "README.md"
+      ]
+    },
+    "notebooks": {
+      "path": "notebooks",
+      "purpose": null,
+      "fileCount": 2,
+      "lastAccessed": 1780080565606,
+      "keyFiles": [
+        "baseline.ipynb",
+        "e05_1dcnn.ipynb"
+      ]
+    },
+    "research_os": {
+      "path": "research_os",
+      "purpose": null,
+      "fileCount": 8,
+      "lastAccessed": 1780080565607,
+      "keyFiles": [
+        "artifacts.py",
+        "cli.py",
+        "contracts.py",
+        "memory.py",
+        "utils.py"
+      ]
+    },
+    "src": {
+      "path": "src",
+      "purpose": "Source code",
+      "fileCount": 13,
+      "lastAccessed": 1780080565608,
+      "keyFiles": [
+        "augmentation.py",
+        "data.py",
+        "external_priors.py",
+        "features.py",
+        "features_clean.py"
+      ]
+    },
+    "submissions": {
+      "path": "submissions",
+      "purpose": null,
+      "fileCount": 579,
+      "lastAccessed": 1780080565611,
+      "keyFiles": [
+        "avg059_power_0.85.csv",
+        "avg059_power_0.9.csv",
+        "avg059_power_0.95.csv",
+        "avg059_sharp_T0.7.csv",
+        "avg059_sharp_T0.8.csv"
+      ]
+    },
+    "tests": {
+      "path": "tests",
+      "purpose": "Test files",
+      "fileCount": 5,
+      "lastAccessed": 1780080565612,
+      "keyFiles": [
+        "test_cli.py",
+        "test_loop_refinement.py",
+        "test_memory.py",
+        "test_submission.py",
+        "test_validate.py"
+      ]
+    },
+    "catboost_info\\test": {
+      "path": "catboost_info\\test",
+      "purpose": "Test files",
+      "fileCount": 1,
+      "lastAccessed": 1780080565614,
+      "keyFiles": [
+        "events.out.tfevents"
+      ]
+    }
+  },
+  "hotPaths": [
+    {
+      "path": "C:\\Users\\levla\\AppData\\Local\\Temp\\claude\\G--Projects-epoch-ai-cup\\63489ea4-fd99-4f0d-8109-8b77a1c749a9\\tasks\\bbjo8b5sn.output",
+      "accessCount": 3,
+      "lastAccessed": 1780080884441,
+      "type": "file"
+    },
+    {
+      "path": "experiments\\e205_e188_variations.py",
+      "accessCount": 1,
+      "lastAccessed": 1780080602692,
+      "type": "file"
+    },
+    {
+      "path": "experiments\\e205_extract_weights.py",
+      "accessCount": 1,
+      "lastAccessed": 1780080658076,
+      "type": "file"
+    }
+  ],
+  "userDirectives": []
+}

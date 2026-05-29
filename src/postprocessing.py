@@ -570,3 +570,179 @@ def extract_heading_ac1(
     ac1 = np.where(np.isfinite(ac1), ac1, 0.0)
     print(f"  heading/ac1 valid: {int(ok.sum())}/{n} ({100 * ok.mean():.1f}%)", flush=True)
     return heading_r, ac1, ok
+
+
+# ---------------------------------------------------------------------------
+# External evidence channel loaders (for NB PP — NOT base model features)
+# ---------------------------------------------------------------------------
+
+def _load_pp_csv(name: str, split: str) -> pd.DataFrame:
+    """Load an aligned external CSV for PP evidence. Returns empty DF if missing."""
+    path = ROOT / "data" / f"{split}_{name}.csv"
+    if path.exists():
+        return pd.read_csv(path)
+    return pd.DataFrame()
+
+
+def load_pp_evidence(
+    df: pd.DataFrame,
+    split: str,
+) -> dict[str, np.ndarray]:
+    """Load all available external evidence channels for NB post-processing.
+
+    Returns dict of channel_name -> (n,) float arrays.  Channels missing
+    from disk are silently skipped.
+
+    These channels are used as EVIDENCE ONLY (PP), never as base-model features.
+    """
+    n = len(df)
+    channels: dict[str, np.ndarray] = {}
+
+    # --- Insect activity index (Clutter discrimination) ---
+    insect = _load_pp_csv("insect", split)
+    if not insect.empty and "insect_activity_index" in insect.columns:
+        channels["insect_activity"] = insect["insect_activity_index"].values[:n].astype(float)
+
+    # --- Visibility / fog / rain (Clutter + Duck) ---
+    vis = _load_pp_csv("visibility", split)
+    if not vis.empty:
+        if "visibility_km" in vis.columns:
+            channels["visibility_km"] = vis["visibility_km"].values[:n].astype(float)
+        if "fog" in vis.columns:
+            channels["fog"] = vis["fog"].values[:n].astype(float)
+        if "rain_occurring" in vis.columns:
+            channels["rain"] = vis["rain_occurring"].values[:n].astype(float)
+
+    # --- Marine data (Cormorant/Gull/Wader habitat) ---
+    marine = _load_pp_csv("marine", split)
+    if not marine.empty:
+        if "wave_height" in marine.columns:
+            channels["wave_height"] = marine["wave_height"].values[:n].astype(float)
+        if "sea_surface_temperature" in marine.columns:
+            channels["sst"] = marine["sea_surface_temperature"].values[:n].astype(float)
+
+    # --- Wind shear 80-180m (BoP thermal proxy) ---
+    alt_winds = _load_pp_csv("altitude_winds", split)
+    if not alt_winds.empty:
+        if "wind_shear_80_180" in alt_winds.columns:
+            channels["wind_shear"] = alt_winds["wind_shear_80_180"].values[:n].astype(float)
+        if "direct_radiation" in alt_winds.columns:
+            channels["direct_radiation"] = alt_winds["direct_radiation"].values[:n].astype(float)
+
+    # --- Photoperiod change rate (migration trigger) ---
+    photo = _load_pp_csv("photoperiod", split)
+    if not photo.empty:
+        if "daylength_change_rate" in photo.columns:
+            channels["daylength_change"] = photo["daylength_change_rate"].values[:n].astype(float)
+
+    # --- Natura2000 distance (Wader concentration) ---
+    natura = _load_pp_csv("natura2000", split)
+    if not natura.empty:
+        if "dist_to_natura2000_m" in natura.columns:
+            channels["natura2000_dist"] = natura["dist_to_natura2000_m"].values[:n].astype(float)
+
+    # --- CAPE normalized (BoP thermals) ---
+    cape = _load_pp_csv("cape", split)
+    if not cape.empty:
+        if "cape_normalized" in cape.columns:
+            channels["cape_norm"] = cape["cape_normalized"].values[:n].astype(float)
+
+    # --- Crepuscular index (Duck/Pigeon discrimination) ---
+    solar = _load_pp_csv("solar", split)
+    if not solar.empty:
+        if "hours_since_sunrise" in solar.columns and "daylight_hours" in solar.columns:
+            hrs = solar["hours_since_sunrise"].values[:n].astype(float)
+            daylight = solar["daylight_hours"].values[:n].astype(float)
+            hrs_since_sunset = daylight - hrs
+            channels["crepuscular"] = (
+                (hrs < 1.0) | (hrs_since_sunset < 1.0)
+            ).astype(float)
+
+    # --- True airspeed (wind-corrected) ---
+    era5 = _load_pp_csv("era5_winds", split)
+    if not era5.empty:
+        airspeed = pd.to_numeric(df["airspeed"], errors="coerce").values.astype(float)
+        if "era5_wind_10m" in era5.columns and "era5_wind_dir_at_alt" in era5.columns:
+            wind_speed = era5["era5_wind_10m"].values[:n].astype(float)
+            wind_dir = era5["era5_wind_dir_at_alt"].values[:n].astype(float)
+            # Compute track heading from trajectory
+            headings = _extract_track_headings(df)
+            wind_from_math = np.pi / 2.0 - np.radians(wind_dir)
+            headwind = wind_speed * np.cos(wind_from_math - headings)
+            true_airspeed = airspeed - headwind
+            channels["true_airspeed"] = np.where(
+                np.isfinite(true_airspeed), true_airspeed, airspeed
+            )
+
+            # --- Insect/wind match: speed ratio + heading difference ---
+            avg_speed = airspeed
+            speed_wind_ratio = np.where(
+                wind_speed > 0.5,
+                avg_speed / np.maximum(wind_speed, 0.5),
+                np.nan,
+            )
+            # Heading difference (circular, 0-pi)
+            heading_wind_diff = np.abs(headings - wind_from_math)
+            heading_wind_diff = np.minimum(heading_wind_diff, 2 * np.pi - heading_wind_diff)
+            # Composite: 1.0 when speed matches wind AND heading matches wind direction
+            wind_match = np.where(
+                np.isfinite(speed_wind_ratio),
+                np.exp(-((speed_wind_ratio - 1.0) ** 2) / 0.5)
+                * np.exp(-(heading_wind_diff ** 2) / 0.5),
+                0.0,
+            )
+            channels["insect_wind_match"] = wind_match
+
+    loaded = [k for k in channels.keys()]
+    print(f"  PP evidence loaded: {len(loaded)} channels ({', '.join(loaded)})", flush=True)
+    return channels
+
+
+def _extract_track_headings(df: pd.DataFrame) -> np.ndarray:
+    """Extract overall track heading (radians, math convention) for each row."""
+    n = len(df)
+    headings = np.zeros(n, dtype=float)
+    for i, (_, row) in enumerate(df.iterrows()):
+        try:
+            pts = parse_ewkb_4d(row["trajectory"])
+            if len(pts) >= 2:
+                lons = [p[0] for p in pts]
+                lats = [p[1] for p in pts]
+                dx = (lons[-1] - lons[0]) * 67000.0
+                dy = (lats[-1] - lats[0]) * 111000.0
+                headings[i] = np.arctan2(dy, dx)
+        except Exception:
+            pass
+    return headings
+
+
+# Alerstam 2007 literature airspeed priors (mean, std in m/s per class)
+ALERSTAM_AIRSPEED: dict[str, tuple[float, float]] = {
+    "Birds of Prey": (10.8, 2.4),
+    "Cormorants": (14.4, 1.5),
+    "Ducks": (15.6, 2.4),
+    "Geese": (17.2, 2.5),
+    "Gulls": (12.4, 2.2),
+    "Pigeons": (15.2, 2.5),
+    "Songbirds": (13.1, 2.2),
+    "Waders": (14.9, 2.2),
+}
+
+
+def get_alerstam_speed_params() -> tuple[np.ndarray, np.ndarray]:
+    """Return (mu, sigma) arrays for the speed channel using Alerstam 2007 priors.
+
+    These literature-derived priors don't overfit to training months, improving
+    generalization for unseen months in post-processing.
+
+    Returns:
+        mu: (K,) per-class mean airspeed
+        sigma: (K,) per-class std airspeed
+    """
+    mu = np.array([ALERSTAM_AIRSPEED.get(c, (13.0, 3.0))[0] for c in CLASSES])
+    sigma = np.array([ALERSTAM_AIRSPEED.get(c, (13.0, 3.0))[1] for c in CLASSES])
+    # Clutter doesn't have a literature value — use wide prior
+    clutter_idx = CLASSES.index("Clutter")
+    mu[clutter_idx] = 5.0   # Clutter/insects tend to be slow
+    sigma[clutter_idx] = 5.0  # Wide uncertainty
+    return mu, sigma

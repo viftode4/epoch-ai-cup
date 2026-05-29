@@ -1,6 +1,5 @@
 """Evaluation metrics matching the competition metric."""
 import numpy as np
-from sklearn.metrics import average_precision_score
 from .data import CLASSES
 
 
@@ -15,6 +14,8 @@ def compute_map(y_true: np.ndarray, y_pred: np.ndarray) -> tuple[float, dict[str
     Returns:
         (overall_mAP, {class_name: AP})
     """
+    from sklearn.metrics import average_precision_score
+
     n_classes = len(CLASSES)
     y_onehot = np.eye(n_classes)[y_true]
     per_class = {}

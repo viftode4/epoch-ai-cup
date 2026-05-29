@@ -1,0 +1,25 @@
+# Context Snapshot: epoch-ai-cup applied-ml research OS extraction
+
+- task statement: turn the local epoch-ai-cup repo into a reusable CLI/OMX-first applied-ML research framework, suitable for a private pilot with technical research labs and solo power users.
+- desired outcome: decision-complete plan for extracting a framework core, preserving epoch-ai-cup as a flagship template, and shipping a 4-6 week pilot.
+- known facts/evidence:
+  - repo has shared code under src/ and 184 experiment scripts under experiments/
+  - core reusable pieces already exist: data loading, feature extraction, metrics, submission helpers, validation logic
+  - strong research process artifacts already exist: EXPERIMENTS.md, TRACKER.md, RESEARCH.md, FINAL_ARCHITECTURE.md, CLAUDE.md
+  - repo has no AGENTS.md, no installable package manifest, no canonical CLI, and no explicit framework boundary
+  - repo is dirty: multiple tracked files modified and many untracked experiment/submission artifacts
+  - current user direction: framework first, applied-ML research OS, CLI/OMX first, private pilot, 4-6 week horizon
+- constraints:
+  - preserve competition/research history rather than rewriting from scratch
+  - v1 should target technical labs / power users, not non-technical UI-first onboarding
+  - should be shareable without depending on private competition data
+  - should use OMX workflows for planning/execution
+- unknowns/open questions:
+  - exact packaging/tooling choice (uv vs poetry/setuptools)
+  - how much of current repo becomes core vs template vs legacy archive
+  - whether pilot wants single-repo extraction or new monorepo split
+- likely codebase touchpoints:
+  - src/
+  - experiments/
+  - EXPERIMENTS.md / TRACKER.md / RESEARCH.md / CLAUDE.md
+  - future .omx/plans/ artifacts

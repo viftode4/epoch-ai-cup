@@ -286,10 +286,24 @@ def extract_trajectory_features(hex_str: str, traj_time_str: str) -> dict:
 # ── External data features ───────────────────────────────────────────
 
 def _load_external_csv(name: str, split: str) -> pd.DataFrame:
-    """Load an aligned external CSV. Returns empty DataFrame if missing."""
+    """Load an aligned external CSV. Returns empty DataFrame if missing.
+
+    Validates row count matches the expected dataset size to catch
+    silent misalignment issues.
+    """
     path = ROOT / "data" / f"{split}_{name}.csv"
     if path.exists():
-        return pd.read_csv(path)
+        ext_df = pd.read_csv(path)
+        expected = _full_dataset_len(split)
+        if len(ext_df) != expected:
+            import warnings
+            warnings.warn(
+                f"{split}_{name}.csv has {len(ext_df)} rows, "
+                f"expected {expected}. Returning empty DataFrame.",
+                stacklevel=2,
+            )
+            return pd.DataFrame()
+        return ext_df
     return pd.DataFrame()
 
 

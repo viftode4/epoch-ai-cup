@@ -234,3 +234,6 @@ nul
 *.npy
 *_output.txt
 .grepai/
+
+# Pilot framework surface
+.pilot/

@@ -1,0 +1,16 @@
+{
+  "version": 1,
+  "active": false,
+  "skill": "ralph",
+  "keyword": "Analyze",
+  "phase": "planning",
+  "activated_at": "2026-04-13T17:17:08.336Z",
+  "updated_at": "2026-04-13T17:19:33.255Z",
+  "source": "keyword-detector",
+  "session_id": "omx-1776099906884-ifeqgz",
+  "thread_id": "019d87d8-76a2-7ad3-9758-e000f27e77fe",
+  "turn_id": "019d87d8-775b-76a1-bbd9-bc4e43cf1e75",
+  "active_skills": [],
+  "iteration": 2,
+  "last_turn_at": "2026-04-13T17:19:28.593Z"
+}

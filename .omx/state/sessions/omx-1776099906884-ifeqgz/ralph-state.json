@@ -1,0 +1,16 @@
+{
+  "active": false,
+  "iteration": 7,
+  "max_iterations": 10,
+  "current_phase": "complete",
+  "started_at": "2026-04-13T18:35:00Z",
+  "task_description": "Produce final pitch markdown and strategy artifacts for AI Cup congress",
+  "owner_omx_session_id": "omx-1776099906884-ifeqgz",
+  "context_snapshot_path": "G:\\Projects\\epoch-ai-cup\\.omx\\context\\final-pitch-md-20260413T171513Z.md",
+  "owner_codex_thread_id": "019d7cdb-f408-73e0-b18a-767c924d711e",
+  "tmux_pane_id": "%1",
+  "tmux_pane_set_at": "2026-04-13T17:17:00.815Z",
+  "last_turn_at": "2026-04-13T17:19:28.592Z",
+  "completed_at": "2026-04-13T00:00:00Z",
+  "artifact": "docs/presentation/FINAL_PITCH.md"
+}

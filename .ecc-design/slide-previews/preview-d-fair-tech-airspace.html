@@ -1,0 +1,98 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Fair Tech Airspace — Hybrid Preview</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wght@600;700;800&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+*{box-sizing:border-box}html,body{height:100%;margin:0}body{overflow:hidden;background:#f3efe8;color:#10161d;font-family:"IBM Plex Sans",sans-serif}
+.slide{width:100vw;height:100vh;height:100dvh;overflow:hidden;position:relative;background:
+radial-gradient(circle at 82% 18%, rgba(255,122,26,.14), transparent 22%),
+radial-gradient(circle at 75% 70%, rgba(28,199,181,.10), transparent 24%),
+linear-gradient(180deg,#f5f1ea 0%,#efe8de 100%)}
+.slide::before,.slide::after{content:"";position:absolute;left:0;right:0;height:18px;background:#e44d2e}.slide::after{top:auto;bottom:0;background:#0d837b}
+.content{position:relative;z-index:3;height:100%;padding:clamp(28px,4vw,64px);display:grid;grid-template-rows:auto 1fr auto;gap:20px}
+.top{display:flex;justify-content:space-between;align-items:flex-start;gap:24px}.label{font-size:12px;letter-spacing:.16em;text-transform:uppercase;color:#67727d}.theme{max-width:26ch;text-align:right;font-size:13px;line-height:1.45;color:#5b6470}
+.hero{display:grid;grid-template-columns:minmax(0,1.05fr) minmax(360px,.95fr);gap:clamp(26px,3vw,56px);align-items:center}
+.copy{display:flex;flex-direction:column;gap:clamp(14px,1.7vw,22px)}.kicker{font-size:clamp(14px,1vw,17px);letter-spacing:.14em;text-transform:uppercase;color:#d65d2f}
+h1{margin:0;max-width:9ch;font-family:"Archivo",sans-serif;font-weight:800;letter-spacing:-.055em;font-size:clamp(46px,6vw,94px);line-height:.9}
+h2{margin:0;max-width:34ch;font-size:clamp(18px,1.7vw,24px);line-height:1.4;color:#3a4652;font-weight:500}
+p{margin:0;max-width:54ch;font-size:clamp(15px,1.12vw,18px);line-height:1.52;color:#505c68}
+.badges{display:flex;gap:10px;flex-wrap:wrap}.badge{padding:10px 14px;border-radius:999px;font-size:12px;font-weight:700;letter-spacing:.04em;border:1px solid rgba(16,22,29,.08)}.accent{background:#e44d2e;color:#fff}.alt{background:#0d837b;color:#fff}.neutral{background:#d8dee6;color:#0f1419}
+.footer{display:flex;justify-content:space-between;align-items:end;gap:24px}.footer-note{max-width:33ch;font-size:13px;line-height:1.45;color:#616b76}.proof{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:14px;min-width:min(54vw,680px)}
+.proof .card{background:rgba(255,255,255,.72);border:2px solid #121820;border-radius:26px;padding:18px 18px 16px;box-shadow:14px 14px 0 rgba(228,77,46,.10)}
+.proof strong{display:block;font-size:13px;letter-spacing:.12em;text-transform:uppercase;color:#d65d2f;margin-bottom:8px}.proof span{font-size:14px;line-height:1.45;color:#3e4853}
+.visual{position:relative;min-height:440px}
+.grid{position:absolute;inset:0;background-image:linear-gradient(to right, rgba(17,24,32,.07) 1px, transparent 1px),linear-gradient(to bottom, rgba(17,24,32,.07) 1px, transparent 1px);background-size:52px 52px;mask-image:radial-gradient(circle at 62% 48%, black 34%, transparent 80%)}
+.panel{position:absolute;inset:28px 10px 28px 30px;background:rgba(255,255,255,.72);border:2px solid #121820;border-radius:28px;box-shadow:18px 18px 0 rgba(228,77,46,.12)}
+.diagram{position:absolute;inset:56px 44px 52px 64px;display:grid;grid-template-columns:repeat(4,1fr);gap:14px;align-items:center}
+.node{position:relative;background:#fff;border:2px solid #121820;border-radius:24px;padding:18px 14px;min-height:118px;display:flex;align-items:center;justify-content:center;text-align:center;font-weight:700;color:#111820;line-height:1.25;box-shadow:0 8px 26px rgba(17,24,32,.06)}
+.node small{display:block;font-weight:500;color:#5f6873;font-size:12px;margin-top:6px}.arrow{display:flex;align-items:center;justify-content:center;font-size:34px;color:#e44d2e;font-weight:800}
+.metric{position:absolute;background:#121820;color:#fff;padding:12px 14px;border-radius:18px;font-size:13px;font-weight:700;box-shadow:0 14px 28px rgba(17,24,32,.12)}
+.m1{right:26px;top:34px}.m2{left:40px;bottom:34px;background:#e44d2e}.m3{right:82px;bottom:20px;background:#0d837b}
+.trace{position:absolute;inset:0;z-index:2}.trace path{fill:none;stroke-linecap:round}.trace .t1{stroke:#e44d2e;stroke-width:3}.trace .t2{stroke:#0d837b;stroke-width:3}.trace .t3{stroke:#b28a63;stroke-width:2.3;stroke-dasharray:6 7;opacity:.9}
+.turbine{position:absolute;right:92px;bottom:76px;width:3px;height:118px;background:rgba(18,24,32,.42);z-index:2}.turbine::before,.turbine::after{content:"";position:absolute;left:-2px;top:26px;width:72px;height:2px;background:rgba(18,24,32,.3);transform-origin:2px 1px}.turbine::before{transform:rotate(19deg)}.turbine::after{transform:rotate(-26deg)}
+.turbine.t2{right:178px;height:90px;bottom:68px}.turbine.t2::before,.turbine.t2::after{width:58px}
+.airspace-tag{position:absolute;left:52px;top:26px;background:#fff;color:#111820;border:2px solid #111820;padding:12px 14px;border-radius:18px;font-size:13px;font-weight:700;z-index:3}
+.animate{opacity:0;transform:translateY(18px);animation:rise .88s cubic-bezier(.2,.8,.2,1) forwards}.a2{animation-delay:.12s}.a3{animation-delay:.24s}.a4{animation-delay:.36s}.a5{animation-delay:.48s}
+@keyframes rise{to{opacity:1;transform:none}}
+@media (max-width:980px){.hero{grid-template-columns:1fr}.visual{min-height:340px}.diagram{grid-template-columns:1fr;inset:78px 38px 44px 38px}.arrow{display:none}.proof{grid-template-columns:1fr;min-width:0}.footer{flex-direction:column;align-items:flex-start}}
+@media (prefers-reduced-motion:reduce){*,*::before,*::after{animation:none!important;transition:none!important;opacity:1!important;transform:none!important}}
+</style>
+</head>
+<body>
+<main class="slide">
+  <section class="content">
+    <div class="top">
+      <div class="label animate">AI Cup 2026 congress hybrid direction</div>
+      <div class="theme animate a2">Data-forward layout + ecological / industrial drawings + fair-tech warmth</div>
+    </div>
+    <div class="hero">
+      <div class="copy">
+        <div class="kicker animate a2">recommended hybrid</div>
+        <h1 class="animate a2">Fair Tech Airspace</h1>
+        <h2 class="animate a3">Clean, serious, and readable like the data style — but with stronger airspace, migration, and wind-energy visual language.</h2>
+        <p class="animate a4">This direction is designed for your exact use case: it keeps the rigor and trust of a data-forward deck, while adding the drawings and conceptual figures that make the story feel alive, ecological, and specific to your problem.</p>
+        <div class="badges animate a5">
+          <span class="badge accent">workflow</span>
+          <span class="badge alt">deployability</span>
+          <span class="badge neutral">biodiversity</span>
+        </div>
+      </div>
+      <div class="visual animate a3">
+        <div class="grid"></div>
+        <div class="panel"></div>
+        <div class="airspace-tag">wind energy + biodiversity share the same airspace</div>
+        <svg class="trace" viewBox="0 0 640 470" preserveAspectRatio="none">
+          <path class="t1" d="M36 322C112 278 154 214 228 194C296 176 346 190 422 146C492 105 540 88 604 68"/>
+          <path class="t2" d="M72 382C156 348 206 324 264 274C326 220 372 224 442 202C506 182 548 144 612 124"/>
+          <path class="t3" d="M46 222C114 206 172 182 236 194C306 208 362 160 430 164C498 168 548 142 604 136"/>
+        </svg>
+        <div class="diagram">
+          <div class="node">Sensor inputs<small>radar + context</small></div>
+          <div class="arrow">→</div>
+          <div class="node">Validation logic<small>honest month-shift checks</small></div>
+          <div class="node">Decision support<small>operator-facing output</small></div>
+        </div>
+        <div class="metric m1">Built to be used</div>
+        <div class="metric m2">Not just a benchmark</div>
+        <div class="metric m3">Research + deployment</div>
+        <div class="turbine"></div>
+        <div class="turbine t2"></div>
+      </div>
+    </div>
+    <div class="footer">
+      <div class="proof animate a5">
+        <div class="card"><strong>Typography</strong><span>Archivo for authority, IBM Plex Sans for clarity and technical trust.</span></div>
+        <div class="card"><strong>Figures</strong><span>Radar traces, turbines, and system nodes make the content legible and thematic.</span></div>
+        <div class="card"><strong>Theme fit</strong><span>Feels aligned to “Impact with AI, the Fair Tech way” instead of generic startup AI.</span></div>
+      </div>
+      <div class="footer-note animate a5">Best next move: use this as the full-deck direction, then apply it consistently across the workflow, system, insight, and deployment slides.</div>
+    </div>
+  </section>
+</main>
+</body>
+</html>

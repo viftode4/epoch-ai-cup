@@ -47,4 +47,5 @@ def parse_ewkb_4d(hex_str: str) -> list[tuple[float, float, float, float]]:
 
 def parse_trajectory_time(traj_time_str: str) -> np.ndarray:
     """Parse trajectory_time string into numpy array."""
-    return np.array(eval(traj_time_str))
+    import json
+    return np.array(json.loads(traj_time_str))

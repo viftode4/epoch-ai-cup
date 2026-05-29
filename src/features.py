@@ -22,9 +22,6 @@ ALL_TEMPORAL = [
 ]
 
 
-SIZE_MAP: dict[str, int] = {"Small bird": 1, "Medium bird": 2, "Large bird": 3, "Flock": 4}
-
-
 def haversine(lon1, lat1, lon2, lat2):
     """Haversine distance in meters."""
     R = 6371000
@@ -35,24 +32,6 @@ def haversine(lon1, lat1, lon2, lat2):
 
 
 # ── Core trajectory features (v2 baseline set) ─────────────────────
-
-def _compute_turn_radius(speeds, bearing_changes, dt_valid, raw_dt, valid_seg):
-    """Median turn radius (m) = speed / angular_velocity. Month-invariant physics."""
-    if len(bearing_changes) < 2 or len(dt_valid) < 2:
-        return 0.0
-    # dt for bearing changes (midpoint of consecutive segment dts)
-    dt_bc = 0.5 * (dt_valid[:-1] + dt_valid[1:]) if len(dt_valid) > 1 else dt_valid[:1]
-    n_bc = min(len(bearing_changes), len(dt_bc))
-    angular_vel = np.abs(bearing_changes[:n_bc]) / np.maximum(dt_bc[:n_bc], 0.001)
-    mid_speeds = 0.5 * (speeds[:-1] + speeds[1:]) if len(speeds) > 1 else speeds[:1]
-    mid_speeds = mid_speeds[:n_bc]
-    # Filter: only turning segments (>0.01 rad/s ~ 0.6 deg/s)
-    mask = angular_vel > 0.01
-    if mask.sum() == 0:
-        return 0.0
-    radii = np.clip(mid_speeds[mask] / angular_vel[mask], 0, 10000)
-    return float(np.median(radii))
-
 
 def extract_core_features(hex_str: str, traj_time_str: str) -> dict:
     """Extract the standard feature set used in v2 baseline."""
@@ -65,29 +44,13 @@ def extract_core_features(hex_str: str, traj_time_str: str) -> dict:
     n = len(pts)
     duration = times[-1] - times[0] if n > 1 else 0.001
 
-    # Segments — filter out near-zero dt to avoid extreme speed outliers
+    # Segments
     if n > 1:
         dists = np.array([haversine(lons[i], lats[i], lons[i + 1], lats[i + 1]) for i in range(n - 1)])
-        raw_dt = np.diff(times)
-        dt = np.maximum(raw_dt, 0.001)
-        raw_speeds = dists / dt
-        # Mask out segments with dt < 0.5s (radar glitches)
-        valid_seg = raw_dt >= 0.5
-        if valid_seg.sum() >= 1:
-            speeds = raw_speeds[valid_seg]
-            dists_valid = dists[valid_seg]
-            dt_valid = dt[valid_seg]
-        else:
-            speeds = raw_speeds
-            dists_valid = dists
-            dt_valid = dt
+        dt = np.maximum(np.diff(times), 0.001)
+        speeds = dists / dt
     else:
         dists, dt, speeds = np.array([0.0]), np.array([1.0]), np.array([0.0])
-        raw_dt = dt
-        valid_seg = np.array([True])
-        dists_valid = dists
-        dt_valid = dt
-        raw_speeds = speeds
 
     total_dist = dists.sum()
     straight_dist = haversine(lons[0], lats[0], lons[-1], lats[-1]) if n > 1 else 0
@@ -98,17 +61,13 @@ def extract_core_features(hex_str: str, traj_time_str: str) -> dict:
     descending = alt_diffs[alt_diffs < 0]
 
     if n > 2:
-        bearings = np.arctan2(np.diff(lats) * 111000.0, np.diff(lons) * 67000.0)
+        bearings = np.arctan2(np.diff(lats), np.diff(lons))
         bearing_changes = np.arctan2(np.sin(np.diff(bearings)), np.cos(np.diff(bearings)))
     else:
         bearing_changes = np.array([0.0])
 
-    # Acceleration (use filtered speeds + valid dt)
-    if len(speeds) > 1 and len(dt_valid) > 1:
-        dt_mid = 0.5 * (dt_valid[:-1] + dt_valid[1:]) if len(dt_valid) > 1 else dt_valid[:1]
-        accel = np.diff(speeds) / np.maximum(dt_mid, 0.001)
-    else:
-        accel = np.array([0.0])
+    # Acceleration
+    accel = np.diff(speeds) / np.maximum(dt[:-1], 0.001) if len(speeds) > 1 and len(dt) > 1 else np.array([0.0])
 
     # Halves
     mid = n // 2
@@ -164,12 +123,10 @@ def extract_core_features(hex_str: str, traj_time_str: str) -> dict:
         # halves
         "alt_change_halves": alt_second - alt_first,
         "rcs_change_halves": rcs_second - rcs_first,
-        # interactions (use filtered speeds for robustness)
-        "speed_x_alt": np.median(speeds) * np.mean(alts),
+        # interactions
+        "speed_x_alt": np.mean(speeds) * np.mean(alts),
         "rcs_x_alt": np.mean(rcs) * np.mean(alts),
         "dist_per_point": total_dist / max(n, 1),
-        # turn radius: speed / angular_velocity (meters)
-        "turn_radius": _compute_turn_radius(speeds, bearing_changes, dt_valid, raw_dt, valid_seg),
     }
 
 
@@ -455,7 +412,7 @@ def extract_flight_mode_features(hex_str: str, traj_time_str: str) -> dict:
 
         # === Direction autocorrelation ===
         if n > 2:
-            bearings = np.arctan2(np.diff(lats) * 111000.0, np.diff(lons) * 67000.0)
+            bearings = np.arctan2(np.diff(lats), np.diff(lons))
             cos_bearings = np.cos(bearings)
 
             def autocorr_at_lag(x, lag):
@@ -473,12 +430,11 @@ def extract_flight_mode_features(hex_str: str, traj_time_str: str) -> dict:
             dir_ac5 = dir_ac10 = 0
 
         # === Curvature (circling detection for BoP) ===
-        # Use meter-scaled coordinates (same fix as bearings)
         if n > 3:
-            dx = np.diff(lons) * 67000.0   # meters east
-            dy = np.diff(lats) * 111000.0  # meters north
+            dx = np.diff(lons)
+            dy = np.diff(lats)
             ds = np.sqrt(dx**2 + dy**2) + 1e-10
-            # Curvature = |x'y'' - y'x''| / |v|^3
+            # Curvature = |d(bearing)/ds|
             if len(dx) > 1:
                 ddx = np.diff(dx)
                 ddy = np.diff(dy)
@@ -542,7 +498,7 @@ def add_tabular_features(df_feat: pd.DataFrame, df_orig: pd.DataFrame) -> pd.Dat
     df_feat["z_range"] = df_orig["max_z"].values - df_orig["min_z"].values
     df_feat["z_mean"] = (df_orig["max_z"].values + df_orig["min_z"].values) / 2
 
-    size_map = SIZE_MAP
+    size_map = {"Small bird": 0, "Medium bird": 1, "Large bird": 2, "Flock": 3}
     df_feat["radar_bird_size"] = df_orig["radar_bird_size"].map(size_map).values
 
     df_feat["airspeed_vs_ground"] = df_feat["airspeed"] / df_feat["avg_ground_speed"].clip(lower=0.01)
@@ -576,7 +532,7 @@ def add_targeted_features(df_feat: pd.DataFrame, df_orig: pd.DataFrame) -> pd.Da
     df_feat["hour_bin_3h"] = (hour // 3).astype(int)
 
     # Size one-hot (helps trees split cleanly)
-    size_map = SIZE_MAP
+    size_map = {"Small bird": 0, "Medium bird": 1, "Large bird": 2, "Flock": 3}
     size_val = df_orig["radar_bird_size"].map(size_map).values
     for name, val in [("small_bird", 0), ("medium", 1), ("large", 2), ("flock", 3)]:
         df_feat[f"is_{name}"] = (size_val == val).astype(int)
@@ -688,13 +644,9 @@ def extract_weakclass_features(hex_str: str, traj_time_str: str) -> dict:
 
         # ── Soaring index (BoP: altitude gain while slow) ──
         if n > 1:
-            raw_dt = np.diff(times)
             dists = np.array([haversine(lons[i], lats[i], lons[i+1], lats[i+1])
                               for i in range(n-1)])
-            raw_speeds = dists / dt
-            # Filter out dt < 0.5s segments (same fix as core)
-            valid_seg = raw_dt >= 0.5
-            speeds = raw_speeds[valid_seg] if valid_seg.sum() >= 1 else raw_speeds
+            speeds = dists / dt
             speed_mean = np.mean(speeds)
 
             alt_diffs = np.diff(alts)
@@ -735,7 +687,7 @@ def extract_weakclass_features(hex_str: str, traj_time_str: str) -> dict:
 
         # Turn angle statistics
         if n > 2:
-            bearings = np.arctan2(np.diff(lats) * 111000.0, np.diff(lons) * 67000.0)
+            bearings = np.arctan2(np.diff(lats), np.diff(lons))
             turn_angles = np.abs(np.arctan2(np.sin(np.diff(bearings)),
                                              np.cos(np.diff(bearings))))
             turn_var = np.var(turn_angles)
@@ -847,23 +799,16 @@ def extract_flight_physics_features(hex_str: str, traj_time_str: str) -> dict:
         if duration < 0.5:
             return defaults
 
-        raw_dt = np.diff(times)
-        dt = np.maximum(raw_dt, 0.001)
+        dt = np.maximum(np.diff(times), 0.001)
 
         # Compute derived arrays
         dists = np.array([haversine(lons[i], lats[i], lons[i+1], lats[i+1])
                           for i in range(n - 1)])
-        raw_speeds = dists / dt
-        # Filter out dt < 0.5s segments (same fix as core)
-        valid_seg = raw_dt >= 0.5
-        if valid_seg.sum() >= 1:
-            speeds = raw_speeds[valid_seg]
-        else:
-            speeds = raw_speeds
+        speeds = dists / dt
         alt_rate = np.diff(alts) / dt  # m/s vertical
 
         if n > 2:
-            bearings = np.arctan2(np.diff(lats) * 111000.0, np.diff(lons) * 67000.0)
+            bearings = np.arctan2(np.diff(lats), np.diff(lons))
             bearing_changes = np.abs(np.arctan2(
                 np.sin(np.diff(bearings)), np.cos(np.diff(bearings))))
         else:
@@ -926,8 +871,8 @@ def extract_flight_physics_features(hex_str: str, traj_time_str: str) -> dict:
 
         # Thermal score: curvature * altitude gain rate / speed -> BoP
         if n > 3 and np.mean(speeds) > 0:
-            dx = np.diff(lons) * 67000.0   # meters east
-            dy = np.diff(lats) * 111000.0  # meters north
+            dx = np.diff(lons)
+            dy = np.diff(lats)
             ds = np.sqrt(dx**2 + dy**2) + 1e-10
             if len(dx) > 1:
                 ddx = np.diff(dx)
@@ -1231,7 +1176,7 @@ def extract_enhanced_bio_shape_features(hex_str: str, traj_time_str: str) -> dic
 
         # ── 1. Turn direction consistency ──────────────────────────────
         if n > 3:
-            bearings = np.arctan2(np.diff(lats) * 111000.0, np.diff(lons) * 67000.0)
+            bearings = np.arctan2(np.diff(lats), np.diff(lons))
             b_changes = np.arctan2(np.sin(np.diff(bearings)),
                                    np.cos(np.diff(bearings)))
             total_turn = np.sum(np.abs(b_changes))
@@ -1339,602 +1284,6 @@ def extract_enhanced_bio_shape_features(hex_str: str, traj_time_str: str) -> dic
         return defaults
 
 
-def extract_rcs_slope(hex_str: str, traj_time_str: str) -> dict:
-    """Linear regression slope of RCS (dBm2) over normalised time [0,1].
-
-    Separates species by how their radar cross-section changes during a track:
-      Clutter: +1.5 dB (RCS increases as object approaches)
-      Cormorants: +0.9 dB (large body, steady approach)
-      Ducks: -2.0 dB (RCS decreases -- departing / altitude change)
-      Others: ~flat
-
-    Returns:
-        rcs_slope: slope in dB per normalised time unit
-    """
-    from scipy.stats import linregress
-
-    pts = parse_ewkb_4d(hex_str)
-    times = parse_trajectory_time(traj_time_str)
-    if len(pts) < 4:
-        return {"rcs_slope": 0.0}
-    try:
-        rcs = np.array([p[3] for p in pts], dtype=float)
-        t = np.array(times, dtype=float)
-        duration = t[-1] - t[0]
-        if duration < 0.1:
-            return {"rcs_slope": 0.0}
-        t_norm = (t - t[0]) / duration  # normalise to [0, 1]
-        slope = linregress(t_norm, rcs).slope
-        return {"rcs_slope": float(slope) if np.isfinite(slope) else 0.0}
-    except Exception:
-        return {"rcs_slope": 0.0}
-
-
-def extract_temporal_dynamics(hex_str: str, traj_time_str: str) -> dict:
-    """Temporal dynamics features that capture flight behaviour over time.
-
-    These features describe HOW measurements evolve along the track, not just
-    their aggregate statistics. They are physics-based (MI ratio < 1.0) and
-    specifically target the failure modes found in confusion analysis:
-
-    heading_local_var:  Windowed heading consistency. BoP misclassified as Gulls
-                        have heading_R=0.78 (looks straight) but heading_local_var=0.25
-                        (actually erratic locally) vs Gulls 0.06. Uses 5-point windows.
-
-    speed_consistency:  Ratio median/mean speed. Robust to outliers. Metronomic
-                        flappers (Pigeons) ~1.0, variable flyers (BoP) < 0.8.
-
-    speed_autocorr:     Lag-1 autocorrelation of speed. Misclassified Cormorants
-                        have 0.23 (matching Gulls), correct ones -0.02.
-
-    speed_slope:        Linear trend in speed over the track. Positive = accelerating
-                        (departure), negative = decelerating (arrival). Normalised
-                        by duration so units are (m/s)/s = m/s^2.
-
-    alt_smoothness:     R^2 of linear fit to altitude. Cormorants/Geese fly level
-                        (R^2 ~0.9), Songbirds bound (R^2 ~0.3).
-
-    heading_change_rate: Standard deviation of bearing changes per second.
-                        Captures turning aggressiveness independent of direction.
-
-    rcs_trend:          Linear trend of RCS over time. Birds flying toward/away
-                        from radar have systematic RCS changes (range effect).
-
-    speed_variability:  IQR of speed / median speed. More robust than CV for
-                        characterising speed consistency. Complements speed_consistency.
-    """
-    from scipy.stats import linregress
-
-    pts = parse_ewkb_4d(hex_str)
-    times = parse_trajectory_time(traj_time_str)
-    n = len(pts)
-
-    defaults = {
-        "td_heading_local_var": 0.0,
-        "td_speed_consistency": 1.0,
-        "td_speed_autocorr": 0.0,
-        "td_speed_slope": 0.0,
-        "td_alt_smoothness": 0.0,
-        "td_heading_change_rate": 0.0,
-        "td_rcs_trend": 0.0,
-        "td_speed_variability": 0.0,
-    }
-
-    if n < 6:
-        return defaults
-
-    try:
-        lons = np.array([p[0] for p in pts])
-        lats = np.array([p[1] for p in pts])
-        alts = np.array([p[2] for p in pts])
-        rcs = np.array([p[3] for p in pts])
-        duration = times[-1] - times[0]
-        if duration < 0.5:
-            return defaults
-
-        raw_dt = np.diff(times)
-        dt = np.maximum(raw_dt, 0.001)
-        valid_seg = raw_dt >= 0.5
-
-        # Speeds (filtered)
-        dlat = np.diff(lats) * 111000.0
-        dlon = np.diff(lons) * 67000.0
-        dists = np.sqrt(dlat**2 + dlon**2)
-        raw_speeds = dists / dt
-        speeds = raw_speeds[valid_seg] if valid_seg.sum() >= 1 else raw_speeds
-
-        # Bearings (latitude-corrected)
-        bearings = np.arctan2(dlat, dlon)
-
-        # --- 1. Heading local variance ---
-        # Compute heading_R in sliding windows of size 5, then take variance
-        # of per-window heading_R. High variance = locally erratic even if
-        # globally straight.
-        win = 5
-        if len(bearings) >= win:
-            local_rs = []
-            for j in range(len(bearings) - win + 1):
-                b_win = bearings[j:j + win]
-                r = np.sqrt(np.mean(np.cos(b_win))**2 + np.mean(np.sin(b_win))**2)
-                local_rs.append(r)
-            local_rs = np.array(local_rs)
-            heading_local_var = float(np.var(local_rs))
-        else:
-            heading_local_var = 0.0
-
-        # --- 2. Speed consistency (median / mean) ---
-        speed_mean = np.mean(speeds)
-        speed_consistency = float(np.median(speeds) / max(speed_mean, 1e-6))
-        speed_consistency = min(speed_consistency, 2.0)
-
-        # --- 3. Speed autocorrelation (lag-1) ---
-        if len(speeds) > 3 and np.std(speeds) > 1e-6:
-            sc = np.corrcoef(speeds[:-1], speeds[1:])
-            speed_autocorr = float(sc[0, 1]) if np.isfinite(sc[0, 1]) else 0.0
-        else:
-            speed_autocorr = 0.0
-
-        # --- 4. Speed slope (acceleration trend) ---
-        if len(speeds) > 3:
-            t_speed = np.linspace(0, 1, len(speeds))
-            speed_slope = float(linregress(t_speed, speeds).slope)
-            if not np.isfinite(speed_slope):
-                speed_slope = 0.0
-        else:
-            speed_slope = 0.0
-
-        # --- 5. Altitude smoothness (R^2 of linear fit) ---
-        if n > 3:
-            t_norm = np.linspace(0, 1, n)
-            slope, intercept, r_value, _, _ = linregress(t_norm, alts)
-            alt_smoothness = float(r_value**2)
-        else:
-            alt_smoothness = 0.0
-
-        # --- 6. Heading change rate ---
-        if len(bearings) > 1:
-            b_changes = np.arctan2(np.sin(np.diff(bearings)),
-                                   np.cos(np.diff(bearings)))
-            heading_change_rate = float(np.std(b_changes) / max(np.mean(dt[1:]), 0.01))
-            if not np.isfinite(heading_change_rate):
-                heading_change_rate = 0.0
-        else:
-            heading_change_rate = 0.0
-
-        # --- 7. RCS trend ---
-        if n > 3:
-            t_norm = np.linspace(0, 1, n)
-            rcs_trend = float(linregress(t_norm, rcs).slope)
-            if not np.isfinite(rcs_trend):
-                rcs_trend = 0.0
-        else:
-            rcs_trend = 0.0
-
-        # --- 8. Speed variability (robust IQR-based) ---
-        if len(speeds) > 3:
-            iqr = np.percentile(speeds, 75) - np.percentile(speeds, 25)
-            speed_variability = float(iqr / max(np.median(speeds), 1e-6))
-        else:
-            speed_variability = 0.0
-
-        return {
-            "td_heading_local_var": heading_local_var,
-            "td_speed_consistency": speed_consistency,
-            "td_speed_autocorr": speed_autocorr,
-            "td_speed_slope": speed_slope,
-            "td_alt_smoothness": alt_smoothness,
-            "td_heading_change_rate": heading_change_rate,
-            "td_rcs_trend": rcs_trend,
-            "td_speed_variability": speed_variability,
-        }
-    except Exception:
-        return defaults
-
-
-def extract_trajectory_separators(hex_str: str, traj_time_str: str) -> dict:
-    """Features with strong class separation power from trajectory analysis.
-
-    heading_R:             BoP d=-1.28, Clutter AUC=0.91 (circling vs straight)
-    rcs_spectral_entropy:  Pigeons d=-1.42 (periodic wingbeat in RCS)
-    speed_autocorr:        BoP d=+0.45 (consistent slow speed)
-    alt_ascending_frac:    Waders/Pigeons d=+0.75 (climbing flight)
-    alt_descending_frac:   Cormorants d=-0.54 (less descending than Gulls)
-    alt_flat_frac:         Cormorants d=+0.73 (level flight)
-    soaring_frac:          BoP d=+0.90 (circling + climbing)
-    rcs_burst_frac:        RCS dynamics (sudden changes)
-    rcs_smooth_frac:       RCS dynamics (stable periods)
-    """
-    pts = parse_ewkb_4d(hex_str)
-    times = parse_trajectory_time(traj_time_str)
-    n = len(pts)
-
-    result = {
-        "heading_R": 1.0,
-        "rcs_spectral_entropy": 0.0,
-        "speed_autocorr": 0.0,
-        "alt_ascending_frac": 0.0,
-        "alt_descending_frac": 0.0,
-        "alt_flat_frac": 1.0,
-        "soaring_frac": 0.0,
-        "rcs_burst_frac": 0.0,
-        "rcs_smooth_frac": 1.0,
-    }
-
-    if n < 4:
-        return result
-
-    lons = np.array([p[0] for p in pts])
-    lats = np.array([p[1] for p in pts])
-    alts = np.array([p[2] for p in pts])
-    rcs = np.array([p[3] for p in pts])
-    raw_dt = np.diff(times)
-    dt = np.maximum(raw_dt, 0.01)
-    valid_seg = raw_dt >= 0.5  # filter glitched timestamps
-
-    # Bearing and heading_R (corrected for latitude)
-    dlat = np.diff(lats) * 111000.0
-    dlon = np.diff(lons) * 67000.0
-    bearings = np.arctan2(dlat, dlon)
-    if len(bearings) >= 2:
-        cos_b = np.cos(bearings)
-        sin_b = np.sin(bearings)
-        result["heading_R"] = float(np.sqrt(np.mean(cos_b)**2 + np.mean(sin_b)**2))
-
-    # RCS spectral entropy (wingbeat periodicity)
-    if n > 8:
-        rcs_centered = rcs - np.mean(rcs)
-        fft_mag = np.abs(np.fft.rfft(rcs_centered))
-        if len(fft_mag) > 1:
-            power = fft_mag[1:] ** 2
-            total_power = power.sum()
-            if total_power > 1e-10:
-                p_norm = power / total_power
-                result["rcs_spectral_entropy"] = float(
-                    -np.sum(p_norm * np.log(p_norm + 1e-10))
-                )
-
-    # Speed autocorrelation
-    dists = np.sqrt(dlat**2 + dlon**2)
-    raw_speeds = dists / dt
-    # Use filtered speeds for autocorrelation (avoid dt glitch contamination)
-    clean_speeds = raw_speeds[valid_seg] if valid_seg.sum() >= 1 else raw_speeds
-    if len(clean_speeds) > 3:
-        sc = np.corrcoef(clean_speeds[:-1], clean_speeds[1:])
-        if np.isfinite(sc[0, 1]):
-            result["speed_autocorr"] = float(sc[0, 1])
-
-    # Altitude dynamics
-    alt_diffs = np.diff(alts)
-    if len(alt_diffs) > 0:
-        result["alt_ascending_frac"] = float(np.mean(alt_diffs > 1))
-        result["alt_descending_frac"] = float(np.mean(alt_diffs < -1))
-        result["alt_flat_frac"] = float(np.mean(np.abs(alt_diffs) <= 1))
-
-    # Soaring fraction (turning + climbing)
-    if len(bearings) > 2 and len(alt_diffs) > 1:
-        dbearing = np.abs(np.diff(bearings))
-        dbearing = np.minimum(dbearing, 2 * np.pi - dbearing)
-        min_len = min(len(dbearing), len(alt_diffs) - 1)
-        if min_len > 0:
-            soaring = (dbearing[:min_len] > 0.3) & (alt_diffs[1:min_len + 1] > 0.5)
-            result["soaring_frac"] = float(np.mean(soaring))
-
-    # RCS dynamics
-    rcs_diff = np.abs(np.diff(rcs))
-    if len(rcs_diff) > 0:
-        result["rcs_burst_frac"] = float(np.mean(rcs_diff > 5))
-        result["rcs_smooth_frac"] = float(np.mean(rcs_diff < 1))
-
-    return result
-
-
-def extract_raw_signal_features(hex_str: str, traj_time_str: str) -> dict:
-    """Deep raw signal features capturing flight behaviour from radar data.
-
-    These features describe physical behaviour only -- no temporal or
-    weather information -- so they generalise across unseen months.
-
-    heading_entropy:      direction diversity (8-sector Shannon entropy)
-    turn_persistence:     longest consecutive same-direction turning / track length
-    alt_profile_var:      altitude deviation from straight-line (undulation)
-    rcs_mod_median:       median RCS modulation depth in 6-point window (body size proxy)
-    rcs_mod_consistency:  CV of RCS modulation (consistent = regular wingbeat)
-    speed_alt_coupling:   correlation between speed and vertical rate (soaring signature)
-    speed_jerk_std:       std of speed acceleration (flight smoothness)
-    vert_speed_skew:      skewness of vertical speed distribution
-    vert_speed_kurt:      kurtosis of vertical speed distribution
-    """
-    pts = parse_ewkb_4d(hex_str)
-    times = parse_trajectory_time(traj_time_str)
-    n = len(pts)
-
-    result = {
-        "heading_entropy": 0.0,
-        "turn_persistence": 0.0,
-        "alt_profile_var": 0.0,
-        "rcs_mod_median": 0.0,
-        "rcs_mod_consistency": 0.0,
-        "speed_alt_coupling": 0.0,
-        "speed_jerk_std": 0.0,
-        "vert_speed_skew": 0.0,
-        "vert_speed_kurt": 0.0,
-    }
-
-    if n < 5:
-        return result
-
-    lons = np.array([p[0] for p in pts])
-    lats = np.array([p[1] for p in pts])
-    alts = np.array([p[2] for p in pts])
-    rcs = np.array([p[3] for p in pts])
-    raw_dt = np.diff(times)
-    dt = np.maximum(raw_dt, 0.01)
-    valid_seg = raw_dt >= 0.5
-
-    dlat = np.diff(lats) * 111000.0
-    dlon = np.diff(lons) * 67000.0
-    dists = np.sqrt(dlat**2 + dlon**2)
-    raw_speeds = dists / dt
-    speeds = raw_speeds[valid_seg] if valid_seg.sum() >= 1 else raw_speeds
-    bearings = np.arctan2(dlat, dlon)
-
-    # heading_entropy: bin bearings into 8 sectors, Shannon entropy
-    sectors = ((bearings + np.pi) / (2 * np.pi) * 8).astype(int) % 8
-    sector_counts = np.bincount(sectors, minlength=8)
-    sector_probs = sector_counts / sector_counts.sum()
-    result["heading_entropy"] = float(
-        -np.sum(sector_probs * np.log(sector_probs + 1e-10))
-    )
-
-    # turn_persistence: longest run of consistent turn direction
-    if len(bearings) > 2:
-        dbearing = np.diff(bearings)
-        dbearing = np.arctan2(np.sin(dbearing), np.cos(dbearing))
-        same_dir = np.diff(np.sign(dbearing)) == 0
-        if len(same_dir) > 0:
-            boundaries = np.where(
-                np.concatenate(([True], ~same_dir, [True]))
-            )[0]
-            runs = np.diff(boundaries)
-            result["turn_persistence"] = float(runs.max() / len(same_dir))
-
-    # alt_profile_var: deviation of altitude from straight-line path
-    alt_line = np.linspace(alts[0], alts[-1], n)
-    result["alt_profile_var"] = float(np.var(alts - alt_line))
-
-    # rcs_mod_median / rcs_mod_consistency: rolling-window RCS modulation
-    win = min(6, n)
-    if win >= 3:
-        rcs_mod = np.array([
-            rcs[j:j + win].max() - rcs[j:j + win].min()
-            for j in range(n - win + 1)
-        ])
-        result["rcs_mod_median"] = float(np.median(rcs_mod))
-        mod_mean = np.mean(rcs_mod)
-        if mod_mean > 1e-10:
-            result["rcs_mod_consistency"] = float(np.std(rcs_mod) / mod_mean)
-
-    # speed_alt_coupling: speed-vertical_rate correlation (soaring = slow + climbing)
-    vert_speed = np.diff(alts) / dt
-    min_l = min(len(speeds), len(vert_speed))
-    if min_l > 2:
-        sc = np.corrcoef(speeds[:min_l], vert_speed[:min_l])
-        if np.isfinite(sc[0, 1]):
-            result["speed_alt_coupling"] = float(sc[0, 1])
-
-    # speed_jerk_std: variability of acceleration
-    if len(speeds) > 2:
-        dt_valid = dt[valid_seg] if valid_seg.sum() >= 1 else dt
-        dt_jerk = dt_valid[1:] if len(dt_valid) > 1 else np.array([1.0])
-        if len(dt_jerk) == len(speeds) - 1:
-            speed_jerk = np.diff(speeds) / np.maximum(dt_jerk, 0.01)
-        else:
-            speed_jerk = np.diff(speeds)  # fallback without dt normalization
-        result["speed_jerk_std"] = float(np.std(speed_jerk))
-
-    # vert_speed_skew / vert_speed_kurt: shape of vertical speed distribution
-    if len(vert_speed) > 3:
-        vs_mean = np.mean(vert_speed)
-        vs_std = np.std(vert_speed)
-        if vs_std > 1e-10:
-            vs_z = (vert_speed - vs_mean) / vs_std
-            result["vert_speed_skew"] = float(np.mean(vs_z**3))
-            result["vert_speed_kurt"] = float(np.mean(vs_z**4) - 3.0)
-
-    return result
-
-
-def extract_micro_pattern_features(hex_str: str, traj_time_str: str) -> dict:
-    """Per-segment micro-pattern features from raw radar signals.
-
-    These capture within-track behavioural dynamics that whole-track
-    averages miss -- critical for separating hard cases from Gulls.
-
-    speed_dip_frac:       BoP d=+1.81 correct vs wrong -- soaring speed drops
-    speed_surge_frac:     Clutter d=+1.91 -- erratic speed spikes
-    turn_frac_15deg:      Clutter d=+1.88, BoP d=+0.76 -- sharp turn fraction
-    high_speed_low_alt:   Ducks d=+1.54 -- fast at low altitude
-    speed_q_ratio:        BoP d=+0.56, Clutter d=+0.89 -- speed p90/p10
-    max_alt_run:          Clutter d=+1.12, Pigeons d=+0.76 -- monotonic alt run
-    vert_osc_freq:        Clutter d=-0.79, Cormorants d=+0.50 -- alt oscillation
-    rcs_periodicity:      Geese d=+0.55 -- wingbeat in RCS ACF
-    glide_frac:           Pigeons d=-0.50 -- fraction in glide mode
-    powered_frac:         Cormorants correct d=+0.76 -- fraction in powered flight
-    rcs_turn_diff:        Cormorants d=-0.58 correct/wrong -- RCS change in turns
-    alt_stable_frac:      Ducks correct d=+0.69 -- fraction near mean altitude
-    bounding_rate:        speed acceleration alternation (songbird wingbeat)
-    turn_speed_corr:      do they slow in turns? (BoP: yes)
-    alt_r2:               altitude linearity (ducks correct: low)
-    """
-    pts = parse_ewkb_4d(hex_str)
-    times = parse_trajectory_time(traj_time_str)
-    n = len(pts)
-
-    result = {
-        "mp_speed_dip_frac": 0.0,
-        "mp_speed_surge_frac": 0.0,
-        "mp_turn_frac_15deg": 0.0,
-        "mp_high_speed_low_alt": 0.0,
-        "mp_speed_q_ratio": 1.0,
-        "mp_max_alt_run": 0.0,
-        "mp_vert_osc_freq": 0.0,
-        "mp_rcs_periodicity": 0.0,
-        "mp_glide_frac": 0.0,
-        "mp_powered_frac": 0.0,
-        "mp_rcs_turn_diff": 0.0,
-        "mp_alt_stable_frac": 0.0,
-        "mp_bounding_rate": 0.0,
-        "mp_turn_speed_corr": 0.0,
-        "mp_alt_r2": 0.0,
-        "mp_rcs_local_range_cv": 0.0,
-    }
-
-    if n < 5:
-        return result
-
-    lons = np.array([p[0] for p in pts])
-    lats = np.array([p[1] for p in pts])
-    alts = np.array([p[2] for p in pts])
-    rcs = np.array([p[3] for p in pts])
-    raw_dt = np.diff(times)
-    dt = np.maximum(raw_dt, 0.01)
-    valid_seg = raw_dt >= 0.5
-
-    dlat = np.diff(lats) * 111000.0
-    dlon = np.diff(lons) * 67000.0
-    dists = np.sqrt(dlat**2 + dlon**2)
-    raw_speeds = dists / dt
-    speeds = raw_speeds[valid_seg] if valid_seg.sum() >= 1 else raw_speeds
-    bearings = np.arctan2(dlat, dlon)
-    vert_speed = np.diff(alts) / dt
-    duration = times[-1] - times[0]
-
-    # Speed dip/surge fraction (local anomalies vs 5-point running average)
-    if len(speeds) > 5:
-        local_avg = np.convolve(speeds, np.ones(5) / 5, mode="same")
-        result["mp_speed_dip_frac"] = float(np.mean(speeds < 0.7 * local_avg))
-        result["mp_speed_surge_frac"] = float(np.mean(speeds > 1.3 * local_avg))
-
-    # Turn fraction (segments with >15 deg bearing change)
-    if len(bearings) > 1:
-        dbearing = np.diff(bearings)
-        dbearing = np.arctan2(np.sin(dbearing), np.cos(dbearing))
-        result["mp_turn_frac_15deg"] = float(
-            np.mean(np.abs(dbearing) > np.radians(15))
-        )
-    else:
-        dbearing = np.array([0.0])
-
-    # High speed at low altitude (duck/cormorant signature)
-    # Use raw speeds (aligned with alts[1:]) for per-segment features
-    result["mp_high_speed_low_alt"] = float(
-        np.mean((raw_speeds > 15) & (alts[1:] < 30))
-    )
-
-    # Speed quantile ratio (p90/p10)
-    if len(speeds) > 3:
-        p10 = np.percentile(speeds, 10)
-        p90 = np.percentile(speeds, 90)
-        result["mp_speed_q_ratio"] = float(p90 / (p10 + 0.1))
-
-    # Max consecutive altitude direction run
-    if len(vert_speed) > 2:
-        vs_sign = np.sign(vert_speed)
-        boundaries = np.where(np.diff(vs_sign) != 0)[0]
-        if len(boundaries) > 0:
-            runs = np.diff(np.concatenate([[0], boundaries, [len(vs_sign)]]))
-            result["mp_max_alt_run"] = float(runs.max() / len(vs_sign))
-        else:
-            result["mp_max_alt_run"] = 1.0
-
-    # Vertical oscillation frequency
-    if len(vert_speed) > 3:
-        vs_sign = np.sign(vert_speed)
-        vs_changes = np.sum(np.diff(vs_sign) != 0)
-        result["mp_vert_osc_freq"] = float(vs_changes / (duration + 1e-10))
-
-    # RCS periodicity (max autocorrelation at lag 2-5)
-    if n > 8:
-        rcs_c = rcs - rcs.mean()
-        acf_vals = []
-        for lag in range(2, min(6, n // 2)):
-            c = np.corrcoef(rcs_c[:-lag], rcs_c[lag:])[0, 1]
-            if np.isfinite(c):
-                acf_vals.append(c)
-        if acf_vals:
-            result["mp_rcs_periodicity"] = float(max(acf_vals))
-
-    # Glide/powered fraction
-    min_l = min(len(speeds) - 1, len(vert_speed) - 1)
-    if min_l > 0:
-        speed_dec = np.diff(speeds[: min_l + 1]) < 0
-        alt_dec = vert_speed[: min_l + 1] < -0.5
-        result["mp_glide_frac"] = float(
-            np.mean(speed_dec[:min_l] & alt_dec[:min_l])
-        )
-        speed_inc = np.diff(speeds[: min_l + 1]) >= 0
-        alt_up = vert_speed[: min_l + 1] >= -0.5
-        result["mp_powered_frac"] = float(
-            np.mean(speed_inc[:min_l] & alt_up[:min_l])
-        )
-
-    # RCS difference during turns vs straight (body aspect angle)
-    if len(dbearing) > 2:
-        turning = np.abs(dbearing) > np.radians(10)
-        straight = ~turning
-        min_l2 = min(len(turning), n - 2)
-        rcs_seg = rcs[1 : min_l2 + 1]
-        if turning[:min_l2].sum() > 0 and straight[:min_l2].sum() > 0:
-            result["mp_rcs_turn_diff"] = float(
-                np.mean(rcs_seg[turning[:min_l2]])
-                - np.mean(rcs_seg[straight[:min_l2]])
-            )
-
-    # Altitude stability fraction (within 5m of mean)
-    result["mp_alt_stable_frac"] = float(
-        np.mean(np.abs(alts - np.mean(alts)) < 5)
-    )
-
-    # Bounding rate (speed acceleration sign alternation)
-    if len(speeds) > 4:
-        speed_sign = np.sign(np.diff(speeds))
-        result["mp_bounding_rate"] = float(np.mean(np.diff(speed_sign) != 0))
-
-    # Turn-speed correlation (slow down in turns?)
-    if len(speeds) > 2 and len(dbearing) > 0:
-        min_l3 = min(len(speeds) - 1, len(dbearing))
-        c = np.corrcoef(
-            np.abs(dbearing[:min_l3]), speeds[1 : min_l3 + 1]
-        )[0, 1]
-        if np.isfinite(c):
-            result["mp_turn_speed_corr"] = float(c)
-
-    # Altitude R^2 (linearity of altitude profile)
-    if n > 3:
-        t_norm = np.linspace(0, 1, n)
-        coeffs = np.polyfit(t_norm, alts, 1)
-        alt_pred = np.polyval(coeffs, t_norm)
-        ss_res = np.sum((alts - alt_pred) ** 2)
-        ss_tot = np.sum((alts - np.mean(alts)) ** 2)
-        result["mp_alt_r2"] = float(max(0, 1 - ss_res / (ss_tot + 1e-10)))
-
-    # RCS local range CV (consistency of RCS modulation across segments)
-    if n > 6:
-        seg_size = 5
-        rcs_local_ranges = [
-            np.max(rcs[j : j + seg_size]) - np.min(rcs[j : j + seg_size])
-            for j in range(0, n - seg_size, seg_size)
-        ]
-        if rcs_local_ranges:
-            mean_r = np.mean(rcs_local_ranges)
-            if mean_r > 1e-10:
-                result["mp_rcs_local_range_cv"] = float(
-                    np.std(rcs_local_ranges) / mean_r
-                )
-
-    return result
-
-
 def extract_radar_physics_features(hex_str: str, traj_time_str: str) -> dict:
     """Novel features derived from radar-bird physics first principles.
 
@@ -1972,10 +1321,9 @@ def extract_radar_physics_features(hex_str: str, traj_time_str: str) -> dict:
     alts = np.array([p[2] for p in pts])
     rcs = np.array([p[3] for p in pts])
 
-    raw_dt = np.diff(times)
-    dt = np.maximum(raw_dt, 0.001)
+    dt = np.diff(times)
+    dt = np.maximum(dt, 0.001)
     median_dt = np.median(dt)
-    valid_seg = raw_dt >= 0.5
 
     # --- 1. Detection gap features ---
     # A "gap" is when dt > 1.5x the median step (missed scan)
@@ -1991,19 +1339,17 @@ def extract_radar_physics_features(hex_str: str, traj_time_str: str) -> dict:
     # from low-WL (Gulls, BoP soaring).
     dists = np.array([haversine(lons[i], lats[i], lons[i+1], lats[i+1])
                       for i in range(n-1)])
-    raw_speeds = dists / dt
-    speeds = raw_speeds[valid_seg] if valid_seg.sum() >= 1 else raw_speeds
+    speeds = dists / dt
     mean_speed = float(np.mean(speeds))
     rcs_linear = 10.0 ** (np.mean(rcs) / 10.0)  # dBm2 → linear
     wing_loading_proxy = mean_speed**2 / max(rcs_linear, 1e-10)
 
     # --- 3. RCS-speed cross-correlation ---
     # At each measurement, correlate RCS with instantaneous speed.
-    # Use midpoint RCS for each segment, filtered to valid segments.
+    # Use midpoint RCS for each segment.
     rcs_mid = 0.5 * (rcs[:-1] + rcs[1:])
-    rcs_mid_clean = rcs_mid[valid_seg] if valid_seg.sum() >= 1 else rcs_mid
-    if len(speeds) > 3 and len(rcs_mid_clean) == len(speeds) and np.std(speeds) > 1e-6 and np.std(rcs_mid_clean) > 1e-6:
-        rcs_speed_corr = float(np.corrcoef(rcs_mid_clean, speeds)[0, 1])
+    if len(speeds) > 3 and np.std(speeds) > 1e-6 and np.std(rcs_mid) > 1e-6:
+        rcs_speed_corr = float(np.corrcoef(rcs_mid, speeds)[0, 1])
         if not np.isfinite(rcs_speed_corr):
             rcs_speed_corr = 0.0
     else:
@@ -2012,7 +1358,7 @@ def extract_radar_physics_features(hex_str: str, traj_time_str: str) -> dict:
     # --- 4. 3D soaring score ---
     # Fraction of track where bird is BOTH turning AND climbing.
     if n > 3:
-        bearings = np.arctan2(np.diff(lats) * 111000.0, np.diff(lons) * 67000.0)
+        bearings = np.arctan2(np.diff(lats), np.diff(lons))
         if len(bearings) > 1:
             bearing_changes = np.abs(
                 np.arctan2(np.sin(np.diff(bearings)), np.cos(np.diff(bearings)))
@@ -2147,18 +1493,13 @@ def extract_path_signature_features(hex_str: str, traj_time_str: str,
         # Channel 3: speed (from haversine, normalized by mean)
         dists = np.array([haversine(lons[i], lats[i], lons[i+1], lats[i+1])
                           for i in range(n - 1)])
-        raw_dt = np.diff(times)
-        raw_speeds = dists / dt
-        # Filter dt < 0.5s for mean computation (avoid outlier inflation)
-        valid_seg = raw_dt >= 0.5
-        speeds = raw_speeds  # keep all for per-point normalization
-        clean_speeds = raw_speeds[valid_seg] if valid_seg.sum() >= 1 else raw_speeds
-        speed_mean = np.mean(clean_speeds) if np.mean(clean_speeds) > 1e-6 else 1.0
+        speeds = dists / dt
+        speed_mean = np.mean(speeds) if np.mean(speeds) > 1e-6 else 1.0
         speed_norm = np.concatenate([[speeds[0] / speed_mean], speeds / speed_mean])
 
         # Channel 4: cumulative bearing change (normalized)
         if n > 2:
-            bearings = np.arctan2(np.diff(lats) * 111000.0, np.diff(lons) * 67000.0)
+            bearings = np.arctan2(np.diff(lats), np.diff(lons))
             b_changes = np.arctan2(np.sin(np.diff(bearings)), np.cos(np.diff(bearings)))
             cum_bearing = np.concatenate([[0, 0], np.cumsum(b_changes)])
             max_b = np.max(np.abs(cum_bearing)) if np.max(np.abs(cum_bearing)) > 1e-10 else 1.0
@@ -2194,7 +1535,7 @@ def add_weakclass_tabular(df_feat: pd.DataFrame, df_orig: pd.DataFrame) -> pd.Da
     month = ts.dt.month.values
     hour = ts.dt.hour.values
 
-    size_map = SIZE_MAP
+    size_map = {"Small bird": 0, "Medium bird": 1, "Large bird": 2, "Flock": 3}
     size_val = df_orig["radar_bird_size"].map(size_map).values
 
     # Migration timing (Geese, Waders peak Oct-Nov)
@@ -2320,8 +1661,7 @@ def build_features(df: pd.DataFrame, feature_sets: list[str] = None,
         feature_sets: list of feature sets to include.
             Options: "core", "rcs_fft", "wavelet", "flight_mode", "tabular",
                      "targeted", "zaugg_cwt", "weakclass", "flight_physics",
-                     "path_signature", "enhanced_bio_shape", "radar_physics",
-                     "rcs_slope", "temporal_dynamics"
+                     "path_signature", "enhanced_bio_shape"
             Default: ["core", "rcs_fft", "tabular"]
         sig_depth: signature truncation depth (2 or 3)
         sig_lead_lag: whether to use lead-lag augmentation for signatures
@@ -2338,12 +1678,6 @@ def build_features(df: pd.DataFrame, feature_sets: list[str] = None,
     use_abs_wb = "absolute_wingbeat" in feature_sets
     use_linearity = "linearity" in feature_sets
     use_enhanced = "enhanced_bio_shape" in feature_sets
-    use_radar_physics = "radar_physics" in feature_sets
-    use_rcs_slope = "rcs_slope" in feature_sets
-    use_traj_sep = "trajectory_separators" in feature_sets
-    use_raw_signal = "raw_signal" in feature_sets
-    use_micro = "micro_patterns" in feature_sets
-    use_temporal_dynamics = "temporal_dynamics" in feature_sets
 
     rows = []
     total = len(df)
@@ -2375,18 +1709,6 @@ def build_features(df: pd.DataFrame, feature_sets: list[str] = None,
             feats.update(extract_linearity_features(r.trajectory, r.trajectory_time))
         if use_enhanced:
             feats.update(extract_enhanced_bio_shape_features(r.trajectory, r.trajectory_time))
-        if use_radar_physics:
-            feats.update(extract_radar_physics_features(r.trajectory, r.trajectory_time))
-        if use_rcs_slope:
-            feats.update(extract_rcs_slope(r.trajectory, r.trajectory_time))
-        if use_traj_sep:
-            feats.update(extract_trajectory_separators(r.trajectory, r.trajectory_time))
-        if use_raw_signal:
-            feats.update(extract_raw_signal_features(r.trajectory, r.trajectory_time))
-        if use_micro:
-            feats.update(extract_micro_pattern_features(r.trajectory, r.trajectory_time))
-        if use_temporal_dynamics:
-            feats.update(extract_temporal_dynamics(r.trajectory, r.trajectory_time))
         rows.append(feats)
     print(f"  Features: {total}/{total} done", flush=True)
 

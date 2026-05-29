@@ -1,0 +1,33 @@
+<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Aero Ecology</title><style>
+*{box-sizing:border-box}html,body{height:100%;margin:0}body{overflow:hidden}
+.slide{width:100vw;height:100vh;height:100dvh;overflow:hidden;position:relative}
+.content{position:relative;z-index:3;height:100%;padding:clamp(28px,4vw,64px);display:flex;flex-direction:column;justify-content:space-between}
+.top{display:flex;justify-content:space-between;align-items:flex-start;gap:24px}.label{font-size:12px;letter-spacing:.16em;text-transform:uppercase;opacity:.75}
+.hero{display:grid;grid-template-columns:minmax(0,1.1fr) minmax(320px,.9fr);gap:clamp(24px,3vw,56px);align-items:center;flex:1}
+.copy{display:flex;flex-direction:column;gap:clamp(14px,1.8vw,22px)}
+.badges{display:flex;gap:10px;flex-wrap:wrap}.badge{padding:10px 14px;border-radius:999px;font-size:12px;font-weight:700;letter-spacing:.04em}
+.kicker{font-size:clamp(14px,1vw,18px);letter-spacing:.12em;text-transform:uppercase}
+h1{margin:0;max-width:10ch;font-size:clamp(44px,6vw,92px);line-height:.92}
+h2{margin:0;max-width:36ch;font-size:clamp(18px,1.65vw,24px);line-height:1.4;font-weight:500}
+p{margin:0;max-width:54ch;font-size:clamp(15px,1.15vw,18px);line-height:1.5;opacity:.86}
+.stack{display:grid;gap:14px}.card{padding:20px;border-radius:24px;backdrop-filter:blur(12px)}
+.card strong{display:block;font-size:14px;letter-spacing:.12em;text-transform:uppercase;margin-bottom:10px}.card p{max-width:none;font-size:15px;line-height:1.45}
+.footer{display:flex;justify-content:space-between;align-items:end;gap:24px}.footer-note{max-width:30ch;font-size:13px;line-height:1.45;opacity:.74}
+.animate{opacity:0;transform:translateY(20px);animation:rise .9s cubic-bezier(.2,.8,.2,1) forwards}.a2{animation-delay:.14s}.a3{animation-delay:.28s}.a4{animation-delay:.42s}.a5{animation-delay:.56s}
+@keyframes rise{to{opacity:1;transform:none}}
+@media (max-width: 920px){.hero{grid-template-columns:1fr}.visual{min-height:280px}.footer{flex-direction:column;align-items:flex-start}}
+@media (prefers-reduced-motion:reduce){.animate,*{animation:none!important;transition:none!important;opacity:1!important;transform:none!important}}
+
+@import url("https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;700&family=Cormorant+Garamond:wght@600;700&display=swap");
+body{background:#111714;color:#f5f0e6;font-family:"Manrope",sans-serif}
+.slide{background:radial-gradient(circle at 78% 28%, rgba(151,102,63,.25), transparent 24%),radial-gradient(circle at 86% 70%, rgba(88,124,103,.22), transparent 26%),linear-gradient(180deg,#111714 0%,#0c120f 100%)}
+.label{color:#bdc7b5}.kicker{color:#d8b27d}.badge{background:rgba(255,255,255,.05);border:1px solid rgba(245,240,230,.12);color:#f5f0e6}.badge.accent{background:#9d6842}.badge.alt{background:#5a7c64}
+h1{font-family:"Cormorant Garamond",serif;font-weight:700;letter-spacing:-.03em;max-width:11ch}.card{background:rgba(20,29,24,.72);border:1px solid rgba(245,240,230,.12);box-shadow:0 18px 40px rgba(0,0,0,.24)}.card strong{color:#d6b17e}
+.visual{position:relative;min-height:440px}
+.skyline{position:absolute;inset:auto 0 0 0;height:42%;background:linear-gradient(180deg, transparent, rgba(0,0,0,.16)),radial-gradient(circle at 14% 78%, rgba(255,255,255,.06), transparent 20%),linear-gradient(180deg, rgba(15,22,18,.2), rgba(8,12,10,.9))}
+.arc{position:absolute;border-top:1px solid rgba(245,240,230,.16);border-radius:50%;width:520px;height:240px;right:-20px;top:80px}
+.arc.a2{width:440px;height:200px;right:18px;top:116px}.arc.a3{width:360px;height:164px;right:56px;top:152px}
+.birdpath{position:absolute;inset:0}.birdpath path{fill:none;stroke-linecap:round;stroke-width:2.6}.birdpath .b1{stroke:#d6b17e}.birdpath .b2{stroke:#7ba48d}.birdpath .b3{stroke:#f0e1c8;stroke-dasharray:5 7;opacity:.7}
+.turbine{position:absolute;bottom:40px;width:2px;height:140px;background:rgba(245,240,230,.35)}.turbine::before,.turbine::after{content:"";position:absolute;left:-2px;top:28px;width:86px;height:2px;background:rgba(245,240,230,.28);transform-origin:2px 1px}.turbine::before{transform:rotate(18deg)}.turbine::after{transform:rotate(-26deg)}
+.t1{right:260px}.t2{right:110px;height:110px}.t2::before,.t2::after{width:68px}
+</style></head><body><main class="slide"><div class="content"><div class="top"><div class="label animate">AI Cup 2026 congress preview</div><div class="footer-note animate a2">Best if you want the deck to feel deeply ecological, elegant, and specific to bird migration rather than generic AI.</div></div><div class="hero"><section class="copy"><div class="kicker animate a2">presentation direction</div><h1 class="animate a2">Aero Ecology</h1><h2 class="animate a3">Bird-safe wind energy needs trustworthy AI.</h2><p class="animate a4">This direction treats the pitch like a story about movement in airspace. It is more atmospheric, more premium, and more emotional than the industrial option.</p><div class="badges animate a5"><span class="badge accent">workflow</span><span class="badge alt">deployability</span><span class="badge">biodiversity</span></div></section><div class="visual animate a3"><div class="arc"></div><div class="arc a2"></div><div class="arc a3"></div><svg class="birdpath" viewBox="0 0 560 460"><path class="b1" d="M58 326C110 272 132 228 192 208C242 191 290 201 348 168C388 145 436 102 498 82"/><path class="b2" d="M90 372C146 346 198 325 246 282C286 246 312 208 378 198C432 189 470 150 514 122"/><path class="b3" d="M48 214C118 198 182 184 238 198C300 214 354 152 414 162C460 170 498 144 522 132"/></svg><div class="turbine t1"></div><div class="turbine t2"></div><div class="skyline"></div></div></div><div class="footer"><div class="stack animate a5"><div class="card"><strong>Why this could work</strong><p>It gives the room a memorable emotional frame while still leaving space for rigor, architecture, and honest validation.</p></div></div><div class="footer-note animate a5">Preview only — one viewport, self-contained, zero-dependency HTML. Pick the design language first, then the full deck.</div></div></div></main></body></html>
